@@ -15,7 +15,7 @@ model BakeryConfig {
   logoUrl        String? @db.VarChar(500)
   address        String? @db.Text
   currency       String  @default("INR") @db.VarChar(3)
-  welcomeMessage String  @default("Welcome! How can I help you today?") @db.Text
+  welcomeMessage String  @default("Welcome! How can I help you today?") @db.VarChar(500)
 
   @@map("bakery_config")
 }
