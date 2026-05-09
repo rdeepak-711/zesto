@@ -99,8 +99,8 @@ model BotSession {
   id            String   @id @default(uuid())
   customerPhone String   @unique @db.VarChar(20)
   state         String   @default("IDLE") @db.VarChar(50)
-  cartJson      Json     @default("[]")
-  contextJson   Json     @default("{}")
+  cartJson      String   @default("[]") @db.VarChar(4000)
+  contextJson   String   @default("{}") @db.VarChar(2000)
   lastActive    DateTime @default(now()) @updatedAt
 
   @@map("bot_sessions")

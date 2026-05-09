@@ -34,8 +34,8 @@ export async function getSession(customerPhone: string): Promise<BotSession> {
     id: row.id,
     customerPhone: row.customerPhone,
     state: row.state,
-    cart: row.cartJson as CartItem[],
-    context: row.contextJson as BotContext,
+    cart: JSON.parse(row.cartJson || '[]') as CartItem[],
+    context: JSON.parse(row.contextJson || '{}') as BotContext,
   }
 }
 
@@ -49,8 +49,8 @@ export async function saveSession(
     where: { customerPhone },
     data: {
       state,
-      cartJson: cart,
-      contextJson: context,
+      cartJson: JSON.stringify(cart),
+      contextJson: JSON.stringify(context),
     },
   })
 }
@@ -60,8 +60,8 @@ export async function resetSession(customerPhone: string) {
     where: { customerPhone },
     data: {
       state: 'IDLE',
-      cartJson: [],
-      contextJson: {},
+      cartJson: '[]',
+      contextJson: '{}',
     },
   })
 }
