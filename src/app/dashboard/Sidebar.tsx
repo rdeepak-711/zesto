@@ -15,6 +15,7 @@ const NAV = [
     section: 'Bakery',
     items: [
       { href: '/dashboard/menu', label: 'Menu', icon: '🍰' },
+      { href: '/dashboard/bot', label: 'Bot Script', icon: '🤖' },
       { href: '/dashboard/analytics', label: 'Analytics', icon: '📊' },
       { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
     ],

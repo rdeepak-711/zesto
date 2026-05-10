@@ -70,11 +70,15 @@ export async function POST(req: NextRequest) {
   }
 
   // Customer message — run bot FSM
-  const [session, categories, menuItems] = await Promise.all([
+  const [session, categories, menuItems, botMessageRows, rules] = await Promise.all([
     getSession(customerPhone),
     db.menuCategory.findMany({ where: { active: true } }),
     db.menuItem.findMany({ where: { available: true } }),
+    db.botMessage.findMany(),
+    db.botRule.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
   ])
+
+  const messages = Object.fromEntries(botMessageRows.map((r) => [r.key, r.value]))
 
   await db.message.create({ data: { customerPhone, body, direction: 'IN' } })
 
@@ -85,6 +89,8 @@ export async function POST(req: NextRequest) {
     context: session.context,
     categories,
     menuItems,
+    messages,
+    rules,
   })
 
   if (output.placeOrder && output.cart.length > 0) {

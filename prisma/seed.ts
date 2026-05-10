@@ -56,6 +56,35 @@ async function main() {
     })
   }
 
+  const botMessages = [
+    { key: 'welcome', label: 'Welcome greeting', value: '👋 Welcome! What would you like to order today?\n\n{categories}\n\nReply with a number to browse that category.' },
+    { key: 'menu_header', label: 'Menu command reply', value: '*Our Menu*\n\n{categories}\n\nReply with a number to browse.' },
+    { key: 'invalid_category', label: 'Invalid category input', value: "Hmm, I didn't catch that. Please choose a category:\n\n{categories}\n\nReply with a number." },
+    { key: 'items_footer', label: 'Item list footer', value: 'Reply with a number to select, or *back* to see all categories.' },
+    { key: 'invalid_item', label: 'Invalid item input', value: 'Please choose a valid item.' },
+    { key: 'quantity_prompt', label: 'Quantity prompt', value: 'How many *{item}* would you like?' },
+    { key: 'invalid_quantity', label: 'Invalid quantity input', value: 'Please enter a valid quantity (1–99).' },
+    { key: 'item_added', label: 'Item added confirmation', value: '✅ Added {qty}× *{item}* to your cart.' },
+    { key: 'add_more_prompt', label: 'Add more items prompt', value: 'Add more? Choose a category:\n\n{categories}\n\nOr type *confirm* to place your order.' },
+    { key: 'choose_more', label: 'Choose more (fallback)', value: 'Choose a category to add more:\n\n{categories}\n\nOr type *confirm* to place your order.' },
+    { key: 'order_summary', label: 'Order summary before confirm', value: '🧾 *Order Summary*\n\n{cart}\n\nReply *yes* to confirm and place your order, or *cancel* to start over.' },
+    { key: 'order_placed', label: 'Order placed success', value: '🎉 Order placed! The baker will review it and get back to you shortly.\n\nThank you for ordering with us! 🍰' },
+    { key: 'order_pending', label: 'Order already pending', value: "Your order is being reviewed by the baker. We'll notify you once it's accepted. 🕐\n\nType *hi* to start a new order." },
+    { key: 'cancel', label: 'Order cancelled', value: 'Order cancelled. Type *hi* to start a new order. 👋' },
+    { key: 'cart_empty', label: 'Cart is empty', value: 'Your cart is empty.' },
+    { key: 'confirm_hint', label: 'Confirm or cancel hint', value: 'Type *confirm* to place order or *cancel* to start over.' },
+    { key: 'await_confirm', label: 'Awaiting yes/no confirm', value: 'Reply *yes* to confirm your order or *cancel* to start over.' },
+    { key: 'back_to_categories', label: 'Back to categories', value: 'Choose a category:\n\n{categories}\n\nReply with a number.' },
+  ]
+
+  for (const msg of botMessages) {
+    await db.botMessage.upsert({
+      where: { key: msg.key },
+      update: { label: msg.label },
+      create: msg,
+    })
+  }
+
   console.log('Seed complete ✓')
 }
 

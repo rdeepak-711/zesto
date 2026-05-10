@@ -107,6 +107,30 @@ model BotSession {
   @@map("bot_sessions")
 }
 
+model BotRule {
+  id        Int      @id @default(autoincrement())
+  sortOrder Int      @default(0)
+  label     String   @db.VarChar(200)
+  state     String   @default("*") @db.VarChar(50)
+  condition String   @default("contains") @db.VarChar(50)
+  matchText String   @db.VarChar(200)
+  reply     String   @db.Text
+  nextState String   @default("SAME") @db.VarChar(50)
+  active    Boolean  @default(true)
+  updatedAt DateTime @updatedAt
+
+  @@map("bot_rules")
+}
+
+model BotMessage {
+  key       String   @id @db.VarChar(100)
+  label     String   @db.VarChar(200)
+  value     String   @db.Text
+  updatedAt DateTime @updatedAt
+
+  @@map("bot_messages")
+}
+
 model OtpSession {
   id        String   @id @default(uuid())
   phone     String   @db.VarChar(20)

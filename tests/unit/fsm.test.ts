@@ -20,6 +20,7 @@ function makeInput(overrides: Partial<BotInput>): BotInput {
     context: {},
     categories,
     menuItems,
+    messages: {},
     ...overrides,
   }
 }

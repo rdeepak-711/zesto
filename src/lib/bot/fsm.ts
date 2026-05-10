@@ -12,6 +12,18 @@ export type BotState =
 export type Category = { id: string; name: string; sortOrder: number }
 export type MenuItem = { id: string; name: string; price: number; categoryId: string; description?: string | null; imageUrl?: string | null; productUrl?: string | null }
 
+export type BotMessages = Record<string, string>
+
+export type BotRule = {
+  id: number
+  state: string
+  condition: string
+  matchText: string
+  reply: string
+  nextState: string
+  active: boolean
+}
+
 export type BotInput = {
   message: string
   state: BotState
@@ -19,6 +31,8 @@ export type BotInput = {
   context: BotContext
   categories: Category[]
   menuItems: MenuItem[]
+  messages: BotMessages
+  rules?: BotRule[]
 }
 
 export type BotOutput = {
@@ -38,15 +52,15 @@ function formatCategoryList(categories: Category[]): string {
   return sorted.map((c, i) => `${i + 1}. ${c.name}`).join('\n')
 }
 
-function formatWelcome(categories: Category[]): string {
-  return (
-    `👋 Welcome! What would you like to order today?\n\n` +
-    formatCategoryList(categories) +
-    `\n\nReply with a number to browse that category.`
-  )
+function fill(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
 }
 
-function formatItems(items: MenuItem[], categoryName: string): string {
+function msg(messages: BotMessages, key: string, vars: Record<string, string> = {}): string {
+  return fill(messages[key] ?? '', vars)
+}
+
+function formatItems(items: MenuItem[], categoryName: string, messages: BotMessages): string {
   const lines = items.map((item, i) => {
     const desc = item.description ? `\n   _${item.description}_` : ''
     const link = item.productUrl
@@ -59,12 +73,13 @@ function formatItems(items: MenuItem[], categoryName: string): string {
   return (
     `*${categoryName}*\n\n` +
     lines.join('\n\n') +
-    `\n\nReply with a number to select, or *back* to see all categories.`
+    `\n\n` +
+    (messages['items_footer'] ?? 'Reply with a number to select, or *back* to see all categories.')
   )
 }
 
-function formatCart(cart: CartItem[]): string {
-  if (cart.length === 0) return 'Your cart is empty.'
+function formatCart(cart: CartItem[], messages: BotMessages): string {
+  if (cart.length === 0) return messages['cart_empty'] ?? 'Your cart is empty.'
   const lines = cart.map(
     (item) => `• ${item.name} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`
   )
@@ -72,26 +87,41 @@ function formatCart(cart: CartItem[]): string {
   return lines.join('\n') + `\n\n*Total: ${formatPrice(total)}*`
 }
 
-function formatAfterAdd(cart: CartItem[], categories: Category[], itemName: string, qty: number): string {
-  return (
-    `✅ Added ${qty}× *${itemName}* to your cart.\n\n` +
-    formatCart(cart) +
-    `\n\n───────────────\n` +
-    `Add more? Choose a category:\n` +
-    formatCategoryList(categories) +
-    `\n\nOr type *confirm* to place your order.`
-  )
+function formatAfterAdd(cart: CartItem[], categories: Category[], itemName: string, qty: number, messages: BotMessages): string {
+  const cartStr = formatCart(cart, messages)
+  const added = msg(messages, 'item_added', { item: itemName, qty: String(qty) })
+  const more = msg(messages, 'add_more_prompt', { categories: formatCategoryList(categories) })
+  return `${added}\n\n${cartStr}\n\n───────────────\n${more}`
+}
+
+function matchesRule(rule: BotRule, msg: string, state: BotState): boolean {
+  const m = msg.trim().toLowerCase()
+  const text = rule.matchText.toLowerCase()
+  if (rule.state !== '*' && rule.state !== state) return false
+  if (rule.condition === 'equals') return m === text
+  if (rule.condition === 'contains') return m.includes(text)
+  if (rule.condition === 'starts_with') return m.startsWith(text)
+  return false
 }
 
 export function processMessage(input: BotInput): BotOutput {
-  const { message, state, cart, context, categories, menuItems } = input
-  const msg = message.trim().toLowerCase()
+  const { message, state, cart, context, categories, menuItems, messages, rules = [] } = input
+  const m = message.trim().toLowerCase()
   const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
 
+  // Custom rules — checked before all built-in logic
+  for (const rule of rules) {
+    if (!rule.active) continue
+    if (matchesRule(rule, message, state)) {
+      const nextState = rule.nextState === 'SAME' ? state : (rule.nextState as BotState)
+      return { reply: rule.reply, nextState, cart, context, placeOrder: false }
+    }
+  }
+
   // Global commands
-  if (msg === 'hi' || msg === 'hello' || msg === 'start') {
+  if (m === 'hi' || m === 'hello' || m === 'start') {
     return {
-      reply: formatWelcome(categories),
+      reply: msg(messages, 'welcome', { categories: formatCategoryList(sorted) }),
       nextState: 'AWAITING_CATEGORY',
       cart: [],
       context: {},
@@ -99,9 +129,9 @@ export function processMessage(input: BotInput): BotOutput {
     }
   }
 
-  if (msg === 'menu') {
+  if (m === 'menu') {
     return {
-      reply: `*Our Menu*\n\n` + formatCategoryList(categories) + `\n\nReply with a number to browse.`,
+      reply: msg(messages, 'menu_header', { categories: formatCategoryList(sorted) }),
       nextState: 'AWAITING_CATEGORY',
       cart: [],
       context: {},
@@ -109,11 +139,11 @@ export function processMessage(input: BotInput): BotOutput {
     }
   }
 
-  if (msg === 'cart') {
+  if (m === 'cart') {
+    const cartStr = formatCart(cart, messages)
+    const hint = cart.length > 0 ? '\n\n' + (messages['confirm_hint'] ?? '') : ''
     return {
-      reply:
-        formatCart(cart) +
-        (cart.length > 0 ? '\n\nType *confirm* to place order or *cancel* to start over.' : ''),
+      reply: cartStr + hint,
       nextState: state,
       cart,
       context,
@@ -121,9 +151,9 @@ export function processMessage(input: BotInput): BotOutput {
     }
   }
 
-  if (msg === 'cancel') {
+  if (m === 'cancel') {
     return {
-      reply: 'Order cancelled. Type *hi* to start a new order. 👋',
+      reply: messages['cancel'] ?? 'Order cancelled. Type *hi* to start a new order. 👋',
       nextState: 'IDLE',
       cart: [],
       context: {},
@@ -134,7 +164,7 @@ export function processMessage(input: BotInput): BotOutput {
   switch (state) {
     case 'IDLE': {
       return {
-        reply: formatWelcome(categories),
+        reply: msg(messages, 'welcome', { categories: formatCategoryList(sorted) }),
         nextState: 'AWAITING_CATEGORY',
         cart,
         context,
@@ -143,21 +173,18 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     case 'AWAITING_CATEGORY': {
-      const byNumber = parseInt(msg, 10)
+      const byNumber = parseInt(m, 10)
       let matched: Category | undefined
 
       if (!isNaN(byNumber) && byNumber >= 1 && byNumber <= sorted.length) {
         matched = sorted[byNumber - 1]
       } else {
-        matched = sorted.find((c) => c.name.toLowerCase() === msg)
+        matched = sorted.find((c) => c.name.toLowerCase() === m)
       }
 
       if (!matched) {
         return {
-          reply:
-            `Hmm, I didn't catch that. Please choose a category:\n\n` +
-            formatCategoryList(sorted) +
-            `\n\nReply with a number.`,
+          reply: msg(messages, 'invalid_category', { categories: formatCategoryList(sorted) }),
           nextState: 'AWAITING_CATEGORY',
           cart,
           context,
@@ -167,7 +194,7 @@ export function processMessage(input: BotInput): BotOutput {
 
       const items = menuItems.filter((i) => i.categoryId === matched!.id)
       return {
-        reply: formatItems(items, matched.name),
+        reply: formatItems(items, matched.name, messages),
         nextState: 'AWAITING_ITEM',
         cart,
         context: { ...context, selectedCategoryId: matched.id },
@@ -176,10 +203,9 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     case 'AWAITING_ITEM': {
-      if (msg === 'back') {
+      if (m === 'back') {
         return {
-          reply:
-            `Choose a category:\n\n` + formatCategoryList(sorted) + `\n\nReply with a number.`,
+          reply: msg(messages, 'back_to_categories', { categories: formatCategoryList(sorted) }),
           nextState: 'AWAITING_CATEGORY',
           cart,
           context: { ...context, selectedCategoryId: undefined },
@@ -190,19 +216,19 @@ export function processMessage(input: BotInput): BotOutput {
       const catItems = menuItems
         .filter((i) => i.categoryId === context.selectedCategoryId)
         .sort((a, b) => a.name.localeCompare(b.name))
-      const byNumber = parseInt(msg, 10)
+      const byNumber = parseInt(m, 10)
       let matched: MenuItem | undefined
 
       if (!isNaN(byNumber) && byNumber >= 1 && byNumber <= catItems.length) {
         matched = catItems[byNumber - 1]
       } else {
-        matched = catItems.find((i) => i.name.toLowerCase().includes(msg))
+        matched = catItems.find((i) => i.name.toLowerCase().includes(m))
       }
 
       if (!matched) {
         const cat = categories.find((c) => c.id === context.selectedCategoryId)
         return {
-          reply: `Please choose a valid item.\n\n` + formatItems(catItems, cat?.name ?? ''),
+          reply: (messages['invalid_item'] ?? 'Please choose a valid item.') + `\n\n` + formatItems(catItems, cat?.name ?? '', messages),
           nextState: 'AWAITING_ITEM',
           cart,
           context,
@@ -211,7 +237,7 @@ export function processMessage(input: BotInput): BotOutput {
       }
 
       return {
-        reply: `How many *${matched.name}* would you like?`,
+        reply: msg(messages, 'quantity_prompt', { item: matched.name }),
         nextState: 'AWAITING_QUANTITY',
         cart,
         context: {
@@ -225,10 +251,10 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     case 'AWAITING_QUANTITY': {
-      const qty = parseInt(msg, 10)
+      const qty = parseInt(m, 10)
       if (isNaN(qty) || qty < 1 || qty > 99) {
         return {
-          reply: 'Please enter a valid quantity (1–99).',
+          reply: messages['invalid_quantity'] ?? 'Please enter a valid quantity (1–99).',
           nextState: 'AWAITING_QUANTITY',
           cart,
           context,
@@ -255,7 +281,7 @@ export function processMessage(input: BotInput): BotOutput {
       }
 
       return {
-        reply: formatAfterAdd(newCart, sorted, context.selectedItemName!, qty),
+        reply: formatAfterAdd(newCart, sorted, context.selectedItemName!, qty, messages),
         nextState: 'AWAITING_MORE',
         cart: newCart,
         context: {
@@ -269,12 +295,10 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     case 'AWAITING_MORE': {
-      if (msg === 'confirm' || msg === 'done' || msg === 'checkout') {
+      if (m === 'confirm' || m === 'done' || m === 'checkout') {
+        const cartStr = formatCart(cart, messages)
         return {
-          reply:
-            `🧾 *Order Summary*\n\n` +
-            formatCart(cart) +
-            `\n\nReply *yes* to confirm and place your order, or *cancel* to start over.`,
+          reply: msg(messages, 'order_summary', { cart: cartStr }),
           nextState: 'AWAITING_CONFIRMATION',
           cart,
           context,
@@ -282,19 +306,18 @@ export function processMessage(input: BotInput): BotOutput {
         }
       }
 
-      // Try to pick a category to add more items
-      const byNumber = parseInt(msg, 10)
+      const byNumber = parseInt(m, 10)
       let matched: Category | undefined
       if (!isNaN(byNumber) && byNumber >= 1 && byNumber <= sorted.length) {
         matched = sorted[byNumber - 1]
       } else {
-        matched = sorted.find((c) => c.name.toLowerCase() === msg)
+        matched = sorted.find((c) => c.name.toLowerCase() === m)
       }
 
       if (matched) {
         const items = menuItems.filter((i) => i.categoryId === matched!.id)
         return {
-          reply: formatItems(items, matched.name),
+          reply: formatItems(items, matched.name, messages),
           nextState: 'AWAITING_ITEM',
           cart,
           context: { ...context, selectedCategoryId: matched.id },
@@ -303,10 +326,7 @@ export function processMessage(input: BotInput): BotOutput {
       }
 
       return {
-        reply:
-          `Choose a category to add more:\n\n` +
-          formatCategoryList(sorted) +
-          `\n\nOr type *confirm* to place your order.`,
+        reply: msg(messages, 'choose_more', { categories: formatCategoryList(sorted) }),
         nextState: 'AWAITING_MORE',
         cart,
         context,
@@ -315,19 +335,18 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     case 'AWAITING_CONFIRMATION': {
-      if (msg === 'yes' || msg === 'confirm') {
+      if (m === 'yes' || m === 'confirm') {
         return {
-          reply:
-            `🎉 Order placed! The baker will review it and get back to you shortly.\n\nThank you for ordering with us! 🍰`,
+          reply: messages['order_placed'] ?? '🎉 Order placed! The baker will review it and get back to you shortly.',
           nextState: 'ORDER_PENDING',
           cart,
           context,
           placeOrder: true,
         }
       }
-      if (msg === 'cancel' || msg === 'no') {
+      if (m === 'cancel' || m === 'no') {
         return {
-          reply: 'Order cancelled. Type *hi* to start a new order. 👋',
+          reply: messages['cancel'] ?? 'Order cancelled. Type *hi* to start a new order. 👋',
           nextState: 'IDLE',
           cart: [],
           context: {},
@@ -335,7 +354,7 @@ export function processMessage(input: BotInput): BotOutput {
         }
       }
       return {
-        reply: `Reply *yes* to confirm your order or *cancel* to start over.`,
+        reply: messages['await_confirm'] ?? 'Reply *yes* to confirm your order or *cancel* to start over.',
         nextState: 'AWAITING_CONFIRMATION',
         cart,
         context,
@@ -345,8 +364,7 @@ export function processMessage(input: BotInput): BotOutput {
 
     case 'ORDER_PENDING': {
       return {
-        reply:
-          `Your order is being reviewed by the baker. We'll notify you once it's accepted. 🕐\n\nType *hi* to start a new order.`,
+        reply: messages['order_pending'] ?? "Your order is being reviewed by the baker. We'll notify you once it's accepted.",
         nextState: 'ORDER_PENDING',
         cart,
         context,
@@ -356,7 +374,7 @@ export function processMessage(input: BotInput): BotOutput {
 
     default: {
       return {
-        reply: formatWelcome(categories),
+        reply: msg(messages, 'welcome', { categories: formatCategoryList(sorted) }),
         nextState: 'AWAITING_CATEGORY',
         cart: [],
         context: {},
