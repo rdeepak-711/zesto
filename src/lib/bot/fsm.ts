@@ -10,7 +10,7 @@ export type BotState =
   | 'ORDER_PENDING'
 
 export type Category = { id: string; name: string; sortOrder: number }
-export type MenuItem = { id: string; name: string; price: number; categoryId: string }
+export type MenuItem = { id: string; name: string; price: number; categoryId: string; description?: string | null; imageUrl?: string | null; productUrl?: string | null }
 
 export type BotInput = {
   message: string
@@ -47,10 +47,18 @@ function formatWelcome(categories: Category[]): string {
 }
 
 function formatItems(items: MenuItem[], categoryName: string): string {
-  const lines = items.map((item, i) => `${i + 1}. ${item.name} — ${formatPrice(item.price)}`)
+  const lines = items.map((item, i) => {
+    const desc = item.description ? `\n   _${item.description}_` : ''
+    const link = item.productUrl
+      ? `\n   ${item.productUrl}`
+      : item.imageUrl
+        ? `\n   ${item.imageUrl}`
+        : ''
+    return `${i + 1}. *${item.name}* — ${formatPrice(item.price)}${desc}${link}`
+  })
   return (
     `*${categoryName}*\n\n` +
-    lines.join('\n') +
+    lines.join('\n\n') +
     `\n\nReply with a number to select, or *back* to see all categories.`
   )
 }

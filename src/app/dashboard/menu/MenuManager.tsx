@@ -8,6 +8,8 @@ type MenuItem = {
   name: string
   price: number
   description: string | null
+  imageUrl: string | null
+  productUrl?: string | null
   available: boolean
 }
 
@@ -21,12 +23,14 @@ function formatPrice(paise: number) {
   return `₹${(paise / 100).toFixed(2)}`
 }
 
+const inputCls = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400'
+
 export default function MenuManager({ categories }: { categories: Category[] }) {
   const router = useRouter()
   const [editing, setEditing] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<MenuItem>>({})
   const [adding, setAdding] = useState<string | null>(null)
-  const [newItem, setNewItem] = useState({ name: '', price: '', description: '' })
+  const [newItem, setNewItem] = useState({ name: '', price: '', description: '', imageUrl: '', productUrl: '' })
 
   async function toggleAvailability(item: MenuItem) {
     await fetch(`/api/menu/items/${item.id}`, {
@@ -65,10 +69,12 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
         categoryId,
         price: Math.round(Number(newItem.price) * 100),
         description: newItem.description || null,
+        imageUrl: newItem.imageUrl || null,
+        productUrl: newItem.productUrl || null,
       }),
     })
     setAdding(null)
-    setNewItem({ name: '', price: '', description: '' })
+    setNewItem({ name: '', price: '', description: '', imageUrl: '', productUrl: '' })
     router.refresh()
   }
 
@@ -79,7 +85,7 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
           <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
             <h2 className="text-sm font-semibold text-gray-700">{cat.name}</h2>
             <button
-              onClick={() => { setAdding(cat.id); setNewItem({ name: '', price: '', description: '' }) }}
+              onClick={() => { setAdding(cat.id); setNewItem({ name: '', price: '', description: '', imageUrl: '', productUrl: '' }) }}
               className="text-xs text-orange-500 hover:text-orange-700 font-medium"
             >
               + Add item
@@ -92,7 +98,8 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
                 {editing === item.id ? (
                   <div className="space-y-2">
                     <input
-                      className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                      className={inputCls}
+                      placeholder="Item name"
                       defaultValue={item.name}
                       onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))}
                     />
@@ -100,8 +107,28 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
                       type="number"
                       step="0.01"
                       className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                      placeholder="Price (₹)"
                       defaultValue={(item.price / 100).toFixed(2)}
                       onChange={(e) => setEditData((d) => ({ ...d, price: e.target.value as unknown as number }))}
+                    />
+                    <textarea
+                      className={inputCls + ' resize-none'}
+                      rows={2}
+                      placeholder="Description (optional)"
+                      defaultValue={item.description ?? ''}
+                      onChange={(e) => setEditData((d) => ({ ...d, description: e.target.value || null }))}
+                    />
+                    <input
+                      className={inputCls}
+                      placeholder="Image URL (optional)"
+                      defaultValue={item.imageUrl ?? ''}
+                      onChange={(e) => setEditData((d) => ({ ...d, imageUrl: e.target.value || null }))}
+                    />
+                    <input
+                      className={inputCls}
+                      placeholder="Product URL (optional — shown in chat)"
+                      defaultValue={item.productUrl ?? ''}
+                      onChange={(e) => setEditData((d) => ({ ...d, productUrl: e.target.value || null }))}
                     />
                     <div className="flex gap-2">
                       <button
@@ -119,14 +146,28 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
                     </div>
                   </div>
                 ) : (
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <span className={`text-sm ${item.available ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
-                        {item.name}
-                      </span>
-                      <span className="text-sm text-gray-500 ml-2">{formatPrice(item.price)}</span>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start gap-3 min-w-0">
+                      {item.imageUrl && (
+                        <img
+                          src={item.imageUrl}
+                          alt={item.name}
+                          className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-100"
+                        />
+                      )}
+                      <div className="min-w-0">
+                        <div className="flex items-baseline gap-2">
+                          <span className={`text-sm font-medium ${item.available ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
+                            {item.name}
+                          </span>
+                          <span className="text-sm text-gray-500">{formatPrice(item.price)}</span>
+                        </div>
+                        {item.description && (
+                          <p className="text-xs text-gray-400 mt-0.5 truncate">{item.description}</p>
+                        )}
+                      </div>
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 flex-shrink-0">
                       <button
                         onClick={() => toggleAvailability(item)}
                         className={`text-xs font-medium ${item.available ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
@@ -154,8 +195,8 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
             {adding === cat.id && (
               <div className="px-5 py-3 bg-orange-50 space-y-2">
                 <input
-                  className="w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                  placeholder="Item name"
+                  className={inputCls}
+                  placeholder="Item name *"
                   value={newItem.name}
                   onChange={(e) => setNewItem((n) => ({ ...n, name: e.target.value }))}
                 />
@@ -163,9 +204,28 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
                   type="number"
                   step="0.01"
                   className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                  placeholder="Price (₹)"
+                  placeholder="Price (₹) *"
                   value={newItem.price}
                   onChange={(e) => setNewItem((n) => ({ ...n, price: e.target.value }))}
+                />
+                <textarea
+                  className={inputCls + ' resize-none'}
+                  rows={2}
+                  placeholder="Description (optional)"
+                  value={newItem.description}
+                  onChange={(e) => setNewItem((n) => ({ ...n, description: e.target.value }))}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Image URL (optional)"
+                  value={newItem.imageUrl}
+                  onChange={(e) => setNewItem((n) => ({ ...n, imageUrl: e.target.value }))}
+                />
+                <input
+                  className={inputCls}
+                  placeholder="Product URL (optional — shown in chat)"
+                  value={newItem.productUrl}
+                  onChange={(e) => setNewItem((n) => ({ ...n, productUrl: e.target.value }))}
                 />
                 <div className="flex gap-2">
                   <button

@@ -15,6 +15,8 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       ...(data.name !== undefined && { name: data.name }),
       ...(data.price !== undefined && { price: Math.round(data.price) }),
       ...(data.description !== undefined && { description: data.description }),
+      ...(data.imageUrl !== undefined && { imageUrl: data.imageUrl }),
+      ...(data.productUrl !== undefined && { productUrl: data.productUrl }),
       ...(data.available !== undefined && { available: data.available }),
     },
   })
