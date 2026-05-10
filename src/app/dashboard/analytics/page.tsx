@@ -1,8 +1,20 @@
 import { db } from '@/lib/db'
 
 function formatPrice(paise: number) {
-  return `₹${(paise / 100).toFixed(2)}`
+  return `₹${(paise / 100).toFixed(0)}`
 }
+
+const STAT_CARDS = (
+  totalOrders: number,
+  revenue: number,
+  pending: number,
+  paid: number
+) => [
+  { label: 'Total Orders', value: String(totalOrders), icon: '🛍️', iconBg: 'bg-orange-50', trend: 'all time' },
+  { label: 'Total Revenue', value: formatPrice(revenue), icon: '💰', iconBg: 'bg-emerald-50' },
+  { label: 'Pending', value: String(pending), icon: '⏳', iconBg: 'bg-amber-50' },
+  { label: 'Paid Orders', value: String(paid), icon: '✅', iconBg: 'bg-blue-50' },
+]
 
 export default async function AnalyticsPage() {
   const sevenDaysAgo = new Date()
@@ -42,62 +54,79 @@ export default async function AnalyticsPage() {
 
   const dailyData = Object.entries(dailyRevenue).map(([date, amount]) => ({ date, amount }))
   const maxDaily = Math.max(...dailyData.map((d) => d.amount), 1)
+  const revenue = revenueAgg._sum.totalAmount ?? 0
+
+  const cards = STAT_CARDS(totalOrders, revenue, pendingOrders, paidOrders)
 
   return (
     <div>
-      <h1 className="text-xl font-semibold text-gray-900 mb-6">Analytics</h1>
-
-      {/* Summary cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
-        {[
-          { label: 'Total Orders', value: totalOrders },
-          { label: 'Paid Orders', value: paidOrders },
-          { label: 'Pending', value: pendingOrders },
-          { label: 'Total Revenue', value: formatPrice(revenueAgg._sum.totalAmount ?? 0) },
-        ].map((card) => (
-          <div key={card.label} className="bg-white rounded-xl border border-gray-200 p-5">
-            <p className="text-xs text-gray-500 mb-1">{card.label}</p>
-            <p className="text-2xl font-bold text-gray-900">{card.value}</p>
-          </div>
-        ))}
+      <div className="bg-white border-b border-gray-200 px-8 h-14 flex items-center gap-3">
+        <h1 className="text-base font-bold text-gray-900">Analytics</h1>
+        <span className="text-xs text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full">Last 7 days</span>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-        {/* Revenue bar chart */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-sm font-medium text-gray-500 mb-4">Revenue — Last 7 Days</h2>
-          <div className="flex items-end gap-2 h-32">
-            {dailyData.map((d) => (
-              <div key={d.date} className="flex-1 flex flex-col items-center gap-1">
-                <div
-                  className="w-full bg-orange-400 rounded-t-sm min-h-[2px]"
-                  style={{ height: `${(d.amount / maxDaily) * 100}%` }}
-                />
-                <span className="text-xs text-gray-400">
-                  {new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                </span>
+      <div className="p-8">
+        {/* Stat cards */}
+        <div className="grid grid-cols-2 lg:grid-cols-4 gap-3.5 mb-6">
+          {cards.map((card) => (
+            <div key={card.label} className="bg-white border border-gray-200 rounded-xl p-5 flex items-start gap-3.5">
+              <div className={`w-10 h-10 ${card.iconBg} rounded-xl flex items-center justify-center text-xl flex-shrink-0`}>
+                {card.icon}
               </div>
-            ))}
-          </div>
+              <div>
+                <div className="text-xs text-gray-400 font-medium">{card.label}</div>
+                <div className="text-2xl font-extrabold text-gray-900 mt-1 leading-none">{card.value}</div>
+                {card.trend && (
+                  <div className="text-[11px] text-emerald-600 font-medium mt-1">↑ {card.trend}</div>
+                )}
+              </div>
+            </div>
+          ))}
         </div>
 
-        {/* Top items */}
-        <div className="bg-white rounded-xl border border-gray-200 p-5">
-          <h2 className="text-sm font-medium text-gray-500 mb-4">Top Selling Items</h2>
-          {topItems.length === 0 ? (
-            <p className="text-sm text-gray-400">No data yet.</p>
-          ) : (
-            <div className="space-y-3">
-              {topItems.map((item) => (
-                <div key={item.name} className="flex items-center justify-between">
-                  <span className="text-sm text-gray-700 truncate max-w-[180px]">{item.name}</span>
-                  <span className="text-sm font-semibold text-gray-900 ml-2">
-                    {item._sum.quantity ?? 0} sold
+        {/* Charts row */}
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+          <div className="lg:col-span-2 bg-white border border-gray-200 rounded-xl p-6">
+            <div className="text-sm font-semibold text-gray-900">Revenue — Last 7 Days</div>
+            <div className="text-xs text-gray-400 mt-0.5 mb-5">Daily revenue in ₹</div>
+            <div className="flex items-end gap-2 h-24">
+              {dailyData.map((d) => (
+                <div key={d.date} className="flex-1 flex flex-col items-center gap-1.5">
+                  <div
+                    className="w-full bg-orange-400 rounded-t-md min-h-[3px] hover:bg-orange-500 transition-colors"
+                    style={{ height: `${(d.amount / maxDaily) * 100}%` }}
+                  />
+                  <span className="text-[10px] text-gray-400">
+                    {new Date(d.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
                   </span>
                 </div>
               ))}
             </div>
-          )}
+          </div>
+
+          <div className="bg-white border border-gray-200 rounded-xl p-6">
+            <div className="text-sm font-semibold text-gray-900">Top Selling Items</div>
+            <div className="text-xs text-gray-400 mt-0.5 mb-5">By units sold</div>
+            {topItems.length === 0 ? (
+              <p className="text-sm text-gray-400">No data yet.</p>
+            ) : (
+              <div className="space-y-3">
+                {topItems.map((item, i) => (
+                  <div key={item.name} className="flex items-center justify-between">
+                    <div className="flex items-center gap-2 min-w-0">
+                      <div
+                        className={`w-2 h-2 rounded-full flex-shrink-0 ${i === 0 ? 'bg-orange-500' : 'bg-gray-200'}`}
+                      />
+                      <span className="text-sm text-gray-700 truncate">{item.name}</span>
+                    </div>
+                    <span className="text-sm font-bold text-gray-900 ml-2 flex-shrink-0">
+                      {item._sum.quantity ?? 0} sold
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>
