@@ -46,7 +46,7 @@ function LoginForm() {
 
     setLoading(false)
     if (res.ok) {
-      router.push(from)
+      window.location.href = from
     } else {
       setError('Invalid or expired code. Please try again.')
     }
