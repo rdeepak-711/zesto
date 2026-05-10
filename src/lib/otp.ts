@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import bcrypt from 'bcryptjs'
 import { db } from '@/lib/db'
-import { twilioClient } from '@/lib/twilio'
+import { sendWhatsApp } from '@/lib/twilio'
 
 const OTP_TTL_MS = 10 * 60 * 1000 // 10 minutes
 
@@ -18,11 +18,7 @@ export async function sendOtp(phone: string): Promise<void> {
     data: { phone, codeHash, expiresAt },
   })
 
-  await twilioClient.messages.create({
-    from: process.env.TWILIO_SMS_NUMBER!,
-    to: phone,
-    body: `Your Zesto verification code: ${code}. Expires in 10 minutes.`,
-  })
+  await sendWhatsApp(phone, `Your Zesto verification code: *${code}*\nExpires in 10 minutes.`)
 }
 
 export async function verifyOtp(phone: string, code: string): Promise<boolean> {
