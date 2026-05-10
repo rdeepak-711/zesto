@@ -9,7 +9,7 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Phone and code required' }, { status: 400 })
   }
 
-  const valid = await verifyOtp(phone, code)
+  const { valid } = await verifyOtp(phone, code)
   if (!valid) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
   }

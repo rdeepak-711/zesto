@@ -15,11 +15,6 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ ok: true })
   }
 
-  try {
-    await sendOtp(phone)
-  } catch (err) {
-    console.error('sendOtp failed:', err)
-    return NextResponse.json({ error: String(err) }, { status: 500 })
-  }
+  await sendOtp(phone)
   return NextResponse.json({ ok: true })
 }

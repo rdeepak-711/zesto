@@ -21,27 +21,24 @@ export async function sendOtp(phone: string): Promise<void> {
   await sendWhatsApp(phone, `Your Zesto verification code: *${code}*\nExpires in 10 minutes.`)
 }
 
-export async function verifyOtp(phone: string, code: string): Promise<boolean> {
+export async function verifyOtp(phone: string, code: string): Promise<{ valid: boolean; debug?: object }> {
   const sessions = await db.otpSession.findMany({
-    where: {
-      phone,
-      used: false,
-      expiresAt: { gt: new Date() },
-    },
+    where: { phone, used: false, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
     take: 5,
   })
 
+  if (sessions.length === 0) {
+    return { valid: false, debug: { reason: 'no_sessions', phone } }
+  }
+
   for (const session of sessions) {
     const match = await bcrypt.compare(code, session.codeHash)
     if (match) {
-      await db.otpSession.update({
-        where: { id: session.id },
-        data: { used: true },
-      })
-      return true
+      await db.otpSession.update({ where: { id: session.id }, data: { used: true } })
+      return { valid: true }
     }
   }
 
-  return false
+  return { valid: false, debug: { reason: 'no_match', sessionCount: sessions.length, phone, codeLen: code.length } }
 }
