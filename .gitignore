@@ -14,7 +14,7 @@
 /coverage
 /test-results
 /playwright-report
-/tests/e2e/login.spec.ts
+/tests/e2e/
 
 # next.js
 /.next/
