@@ -25,10 +25,17 @@ function makeInput(overrides: Partial<BotInput>): BotInput {
 }
 
 describe('FSM global commands', () => {
-  it('returns menu on "menu" in any state', () => {
+  it('returns category list on "menu" in any state', () => {
     const out = processMessage(makeInput({ message: 'menu', state: 'ORDER_PENDING' }))
     expect(out.nextState).toBe('AWAITING_CATEGORY')
     expect(out.reply).toContain('Our Menu')
+    expect(out.cart).toHaveLength(0)
+  })
+
+  it('returns welcome + category list on "hi"', () => {
+    const out = processMessage(makeInput({ message: 'hi', state: 'IDLE' }))
+    expect(out.nextState).toBe('AWAITING_CATEGORY')
+    expect(out.reply).toContain('Welcome')
     expect(out.cart).toHaveLength(0)
   })
 
@@ -57,7 +64,7 @@ describe('FSM AWAITING_CATEGORY', () => {
   it('rejects invalid category', () => {
     const out = processMessage(makeInput({ message: 'burgers', state: 'AWAITING_CATEGORY' }))
     expect(out.nextState).toBe('AWAITING_CATEGORY')
-    expect(out.reply).toContain('valid category')
+    expect(out.reply).toContain('choose a category')
   })
 })
 
