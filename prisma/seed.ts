@@ -69,7 +69,7 @@ async function main() {
   }
 
   const botMessages = [
-    { key: 'welcome', label: 'Welcome greeting', value: '👋 Welcome! What would you like to order today?\n\n{categories}\n\nReply with a number to browse that category.' },
+    { key: 'welcome', label: 'Welcome greeting', value: '👋 Welcome to our bakery!\n\nWhat would you like to do?\n\n{categories}\n\nReply with a number to browse and order.\n\n📦 Type *track* to check your order status\n❌ Type *cancel order* to cancel an active order' },
     { key: 'menu_header', label: 'Menu command reply', value: '*Our Menu*\n\n{categories}\n\nReply with a number to browse.' },
     { key: 'invalid_category', label: 'Invalid category input', value: "Hmm, I didn't catch that. Please choose a category:\n\n{categories}\n\nReply with a number." },
     { key: 'items_footer', label: 'Item list footer', value: 'Reply with a number to select, or *back* to see all categories.' },
@@ -80,7 +80,7 @@ async function main() {
     { key: 'add_more_prompt', label: 'Add more items prompt', value: 'Add more? Choose a category:\n\n{categories}\n\nOr type *confirm* to place your order.' },
     { key: 'choose_more', label: 'Choose more (fallback)', value: 'Choose a category to add more:\n\n{categories}\n\nOr type *confirm* to place your order.' },
     { key: 'order_summary', label: 'Order summary before confirm', value: '🧾 *Order Summary*\n\n{cart}\n\nReply *yes* to confirm and place your order, or *cancel* to start over.' },
-    { key: 'order_placed', label: 'Order placed success', value: '🎉 Order placed! The baker will review it and get back to you shortly.\n\nThank you for ordering with us! 🍰' },
+    { key: 'order_placed', label: 'Order placed success', value: '🎉 Order placed! The baker will review it and get back to you shortly.\n\nType *track* to check your order status anytime. Thank you! 🍰' },
     { key: 'order_pending', label: 'Order already pending', value: "Your order is being reviewed by the baker. We'll notify you once it's accepted. 🕐\n\nType *hi* to start a new order." },
     { key: 'cancel', label: 'Order cancelled', value: 'Order cancelled. Type *hi* to start a new order. 👋' },
     { key: 'cart_empty', label: 'Cart is empty', value: 'Your cart is empty.' },
@@ -91,12 +91,24 @@ async function main() {
     { key: 'custom_confirm', label: 'Custom order — confirm preview', value: "Got it! Here's your custom request:\n\n_{description}_\n\nPrice will be confirmed by the baker.\n\nReply *yes* to send to the baker, or *edit* to retype." },
     { key: 'custom_too_short', label: 'Custom order — too short', value: 'Please give a bit more detail so the baker knows exactly what to make!' },
     { key: 'custom_await_confirm', label: 'Custom order — awaiting yes/edit', value: 'Reply *yes* to send to the baker, or *edit* to retype your request.' },
+    { key: 'variant_prompt', label: 'Variant selection prompt', value: 'Which size/variant would you like for *{item}*?' },
+    { key: 'variant_footer', label: 'Variant list footer', value: 'Reply with a number to select.' },
+    { key: 'invalid_variant', label: 'Invalid variant input', value: 'Please choose a valid option.' },
+    { key: 'delivery_date_prompt', label: 'Delivery date/time prompt', value: "📅 When would you like your order? (e.g. *Tomorrow 3pm*, *Friday evening*, *ASAP*)" },
+    { key: 'discount_hint', label: 'Discount code hint in summary', value: 'Have a discount code? Type it now, or type *yes* to confirm.' },
+    { key: 'discount_min_amount', label: 'Discount code min amount error', value: 'This code requires a minimum order of {amount}.' },
+    { key: 'invalid_code', label: 'Invalid discount code', value: "❌ That code isn't valid. Type *yes* to confirm or *cancel* to start over." },
+    { key: 'min_order', label: 'Minimum order amount not met', value: 'Minimum order is {amount}. Please add more items to continue.' },
+    { key: 'track_no_order', label: 'Track — no order found', value: "You don't have any active orders. Type *hi* to start a new order! 🛍️" },
+    { key: 'cancel_no_order', label: 'Cancel — no active order', value: 'No active order found to cancel. Type *hi* to start a new order.' },
+    { key: 'cancel_confirmed', label: 'Cancel — order cancelled', value: '✅ Your order has been cancelled. Type *hi* to start a new order.' },
+    { key: 'cancel_request_sent', label: 'Cancel — request sent to baker', value: 'Your cancellation request has been sent to the baker. We\'ll confirm shortly.' },
   ]
 
   for (const msg of botMessages) {
     await db.botMessage.upsert({
       where: { key: msg.key },
-      update: { label: msg.label },
+      update: { label: msg.label, value: msg.value },
       create: msg,
     })
   }

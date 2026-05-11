@@ -5,6 +5,7 @@ export type CartItem = {
   name: string
   price: number
   quantity: number
+  variantName?: string
 }
 
 export type BotContext = {
@@ -12,8 +13,13 @@ export type BotContext = {
   selectedItemId?: string
   selectedItemName?: string
   selectedItemPrice?: number
+  selectedVariantName?: string
+  selectedVariantDelta?: number
   customerName?: string
   customDescription?: string
+  deliveryNote?: string
+  appliedCode?: string
+  appliedDiscount?: number
 }
 
 export type BotSession = {

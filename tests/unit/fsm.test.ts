@@ -12,6 +12,28 @@ const menuItems = [
   { id: 'item-croissant', name: 'Butter Croissant', price: 8000, categoryId: 'cat-pastries' },
 ]
 
+const defaultMessages = {
+  welcome: 'Welcome! {categories}',
+  menu_header: 'Our Menu\n\n{categories}',
+  invalid_category: "Please choose a category:\n\n{categories}",
+  items_footer: 'Reply with a number.',
+  invalid_item: 'Please choose a valid item.',
+  quantity_prompt: 'How many *{item}* would you like?',
+  invalid_quantity: 'Please enter a valid quantity (1–99).',
+  item_added: '✅ Added {qty}× *{item}* to your cart.',
+  add_more_prompt: 'Add more? Choose a category:\n\n{categories}\n\nOr type *confirm*.',
+  choose_more: 'Choose a category:\n\n{categories}\n\nOr type *confirm*.',
+  order_summary: '🧾 Order Summary\n\n{cart}\n\nReply *yes* to confirm.',
+  order_placed: '🎉 Order placed!',
+  order_pending: 'Order being reviewed.',
+  cancel: 'Order cancelled.',
+  cart_empty: 'Your cart is empty.',
+  confirm_hint: 'Type *confirm* to place order.',
+  await_confirm: 'Reply *yes* to confirm or *cancel* to start over.',
+  back_to_categories: 'Choose a category:\n\n{categories}',
+  delivery_date_prompt: '📅 When would you like your order?',
+}
+
 function makeInput(overrides: Partial<BotInput>): BotInput {
   return {
     message: '',
@@ -20,7 +42,7 @@ function makeInput(overrides: Partial<BotInput>): BotInput {
     context: {},
     categories,
     menuItems,
-    messages: {},
+    messages: defaultMessages,
     ...overrides,
   }
 }
@@ -140,5 +162,93 @@ describe('FSM AWAITING_CONFIRMATION', () => {
     expect(out.placeOrder).toBe(false)
     expect(out.nextState).toBe('IDLE')
     expect(out.cart).toHaveLength(0)
+  })
+
+  it('applies valid discount code', () => {
+    const discountCodes = [{ code: 'SAVE10', type: 'percent', value: 10, minAmount: 0, maxUses: 0, usedCount: 0, expiresAt: null }]
+    const out = processMessage(makeInput({ message: 'SAVE10', state: 'AWAITING_CONFIRMATION', cart, discountCodes }))
+    expect(out.nextState).toBe('AWAITING_CONFIRMATION')
+    expect(out.context.appliedCode).toBe('SAVE10')
+    expect(out.context.appliedDiscount).toBe(8000) // 10% of 80000
+  })
+
+  it('rejects unknown discount code', () => {
+    const discountCodes = [{ code: 'SAVE10', type: 'percent', value: 10, minAmount: 0, maxUses: 0, usedCount: 0, expiresAt: null }]
+    const out = processMessage(makeInput({ message: 'BADCODE', state: 'AWAITING_CONFIRMATION', cart, discountCodes }))
+    expect(out.nextState).toBe('AWAITING_CONFIRMATION')
+    expect(out.context.appliedCode).toBeUndefined()
+  })
+})
+
+describe('FSM AWAITING_MORE (min order + checkout)', () => {
+  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
+
+  it('blocks checkout when below min order', () => {
+    const out = processMessage(makeInput({ message: 'confirm', state: 'AWAITING_MORE', cart, minOrderAmount: 100000 }))
+    expect(out.nextState).toBe('AWAITING_MORE')
+    expect(out.reply).toContain('₹')
+  })
+
+  it('proceeds to delivery date when above min order', () => {
+    const out = processMessage(makeInput({ message: 'confirm', state: 'AWAITING_MORE', cart, minOrderAmount: 50000 }))
+    expect(out.nextState).toBe('AWAITING_DELIVERY_DATE')
+  })
+})
+
+describe('FSM AWAITING_DELIVERY_DATE', () => {
+  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
+
+  it('accepts delivery date and moves to confirmation', () => {
+    const out = processMessage(makeInput({ message: 'Tomorrow 3pm', state: 'AWAITING_DELIVERY_DATE', cart }))
+    expect(out.nextState).toBe('AWAITING_CONFIRMATION')
+    expect(out.context.deliveryNote).toBe('Tomorrow 3pm')
+  })
+})
+
+describe('FSM AWAITING_VARIANT', () => {
+  const menuItemsWithVariants = [
+    ...menuItems,
+    {
+      id: 'item-layered',
+      name: 'Layered Cake',
+      price: 120000,
+      categoryId: 'cat-cakes',
+      variants: [
+        { id: 'v1', name: 'Small (500g)', priceDelta: 0 },
+        { id: 'v2', name: 'Large (1kg)', priceDelta: 30000 },
+      ],
+    },
+  ]
+
+  it('shows variant list when item has variants', () => {
+    // Sorted alphabetically: 1=Chocolate, 2=Layered, 3=Vanilla
+    const out = processMessage(
+      makeInput({
+        message: '2',
+        state: 'AWAITING_ITEM',
+        menuItems: menuItemsWithVariants,
+        context: { selectedCategoryId: 'cat-cakes' },
+      })
+    )
+    expect(out.nextState).toBe('AWAITING_VARIANT')
+    expect(out.context.selectedItemId).toBe('item-layered')
+  })
+
+  it('selects variant by number and adjusts price', () => {
+    const out = processMessage(
+      makeInput({
+        message: '2',
+        state: 'AWAITING_VARIANT',
+        menuItems: menuItemsWithVariants,
+        context: {
+          selectedItemId: 'item-layered',
+          selectedItemName: 'Layered Cake',
+          selectedItemPrice: 120000,
+        },
+      })
+    )
+    expect(out.nextState).toBe('AWAITING_QUANTITY')
+    expect(out.context.selectedItemPrice).toBe(150000) // 120000 + 30000
+    expect(out.context.selectedVariantName).toBe('Large (1kg)')
   })
 })

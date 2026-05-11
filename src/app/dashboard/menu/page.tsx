@@ -4,7 +4,13 @@ import MenuManager from './MenuManager'
 export default async function MenuPage() {
   const categories = await db.menuCategory.findMany({
     orderBy: { sortOrder: 'asc' },
-    include: { items: { where: { available: true }, orderBy: { sortOrder: 'asc' } } },
+    include: {
+      items: {
+        where: { available: true },
+        orderBy: { sortOrder: 'asc' },
+        include: { variants: { orderBy: { sortOrder: 'asc' } } },
+      },
+    },
   })
 
   const totalItems = categories.filter((c) => c.id !== 'cat-custom').reduce((sum, c) => sum + c.items.length, 0)

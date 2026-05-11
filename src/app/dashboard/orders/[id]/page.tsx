@@ -12,6 +12,8 @@ const STATUS_META: Record<string, { label: string; bg: string; text: string; dot
   COMPLETED: { label: 'Completed', bg: 'bg-gray-100',   text: 'text-gray-600',   dot: 'bg-gray-400' },
 }
 
+const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
+
 function formatPrice(paise: number) {
   return `₹${(paise / 100).toFixed(0)}`
 }
@@ -23,12 +25,20 @@ function formatDateTime(d: Date) {
   })
 }
 
-async function acceptOrder(orderId: string) {
+async function acceptOrder(orderId: string, formData: FormData) {
   'use server'
   const order = await db.order.findUnique({ where: { id: orderId } })
   if (!order || order.status !== 'PENDING') return
-  await db.order.update({ where: { id: orderId }, data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() } })
-  await sendWhatsApp(order.customerPhone, `🎉 Your order has been accepted! The baker will prepare it shortly.\n\nWe'll notify you when it's ready. Thank you!`)
+  const deliveryNote = (formData.get('deliveryNote') as string | null)?.trim() || order.deliveryNote || null
+  await db.order.update({
+    where: { id: orderId },
+    data: { status: 'ACCEPTED', bakerNotifiedAt: new Date(), deliveryNote },
+  })
+  const deliveryLine = deliveryNote ? `\n📅 *Delivery:* ${deliveryNote}` : ''
+  await sendWhatsApp(
+    order.customerPhone,
+    `🎉 Your order has been *accepted*! The baker is now preparing it.${deliveryLine}\n\nType *track* anytime to check your order status. Thank you! 🎂`
+  )
   revalidatePath(`/dashboard/orders/${orderId}`)
   redirect('/dashboard')
 }
@@ -48,9 +58,25 @@ async function completeOrder(orderId: string) {
   const order = await db.order.findUnique({ where: { id: orderId } })
   if (!order || order.status !== 'ACCEPTED') return
   await db.order.update({ where: { id: orderId }, data: { status: 'COMPLETED' } })
-  await sendWhatsApp(order.customerPhone, `✅ Your order #${order.id.slice(0, 8).toUpperCase()} is ready! Thank you for choosing us 🎂`)
+  const shortId = order.id.slice(0, 8).toUpperCase()
+  await sendWhatsApp(
+    order.customerPhone,
+    `✅ Your order #${shortId} is ready! Thank you for choosing us 🎂\n\nWe'd love your feedback! Reply with a number:\n\n5 - Excellent\n4 - Good\n3 - OK\n2 - Below average\n1 - Poor`
+  )
   revalidatePath(`/dashboard/orders/${orderId}`)
   redirect('/dashboard')
+}
+
+async function sendPaymentLink(orderId: string) {
+  'use server'
+  const order = await db.order.findUnique({ where: { id: orderId } })
+  if (!order || order.status !== 'ACCEPTED' || order.totalAmount <= 0) return
+  const payUrl = `${APP_URL}/pay/${orderId}`
+  await sendWhatsApp(
+    order.customerPhone,
+    `💳 Payment request for your order #${order.id.slice(0, 8).toUpperCase()}\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`
+  )
+  revalidatePath(`/dashboard/orders/${orderId}`)
 }
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -64,6 +90,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
   const acceptWithId = acceptOrder.bind(null, id)
   const rejectWithId = rejectOrder.bind(null, id)
   const completeWithId = completeOrder.bind(null, id)
+  const sendPaymentWithId = sendPaymentLink.bind(null, id)
 
   const shortId = order.id.slice(0, 8).toUpperCase()
   const status = STATUS_META[order.status] ?? STATUS_META.PENDING
@@ -89,6 +116,44 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
           </span>
         )}
       </div>
+
+      {/* Order progress tracker (non-rejected, non-custom) */}
+      {!isCustom && order.status !== 'REJECTED' && (
+        <div className="bg-white border-b border-gray-100 px-8 py-3">
+          <div className="flex items-center gap-0 max-w-lg">
+            {(['PENDING', 'ACCEPTED', 'PAID', 'COMPLETED'] as const).map((s, idx, arr) => {
+              const labels: Record<string, string> = { PENDING: 'Received', ACCEPTED: 'Preparing', PAID: 'Paid', COMPLETED: 'Ready' }
+              const statuses = ['PENDING', 'ACCEPTED', 'PAID', 'COMPLETED']
+              const currentIdx = statuses.indexOf(order.status)
+              const stepIdx = statuses.indexOf(s)
+              const done = stepIdx < currentIdx
+              const active = stepIdx === currentIdx
+              return (
+                <div key={s} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex flex-col items-center gap-0.5">
+                    <div className={`w-6 h-6 rounded-full flex items-center justify-center text-xs font-bold transition-colors ${
+                      done ? 'bg-orange-500 text-white' : active ? 'bg-orange-500 text-white ring-4 ring-orange-100' : 'bg-gray-100 text-gray-400'
+                    }`}>
+                      {done ? '✓' : idx + 1}
+                    </div>
+                    <span className={`text-[10px] font-medium whitespace-nowrap ${active ? 'text-orange-600' : done ? 'text-gray-500' : 'text-gray-300'}`}>
+                      {labels[s]}
+                    </span>
+                  </div>
+                  {idx < arr.length - 1 && (
+                    <div className={`flex-1 h-0.5 mb-3.5 mx-1 ${stepIdx < currentIdx ? 'bg-orange-400' : 'bg-gray-100'}`} />
+                  )}
+                </div>
+              )
+            })}
+          </div>
+          {order.deliveryNote && (
+            <p className="text-xs text-gray-500 mt-1.5">
+              📅 <span className="font-medium">{order.deliveryNote}</span>
+            </p>
+          )}
+        </div>
+      )}
 
       <div className="p-8">
         <div className="grid grid-cols-[1fr_280px] gap-6 max-w-4xl">
@@ -154,8 +219,20 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
             {/* Actions */}
             {order.status === 'PENDING' && (
-              <div className="grid grid-cols-2 gap-3">
-                <form action={acceptWithId}>
+              <div className="space-y-3">
+                <form action={acceptWithId} className="space-y-2">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-500 mb-1">
+                      Delivery date/time
+                      {!order.deliveryNote && <span className="text-amber-500 ml-1">(customer didn't specify — set one below)</span>}
+                    </label>
+                    <input
+                      name="deliveryNote"
+                      defaultValue={order.deliveryNote ?? ''}
+                      placeholder="e.g. Tomorrow 3pm, Fri evening, ASAP"
+                      className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400"
+                    />
+                  </div>
                   <button type="submit" className="w-full bg-orange-500 hover:bg-orange-600 text-white rounded-xl py-3 text-sm font-bold transition-colors shadow-sm">
                     ✓ Accept Order
                   </button>
@@ -168,12 +245,40 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
               </div>
             )}
 
-            {order.status === 'ACCEPTED' && (
+            {order.status === 'ACCEPTED' && !isCustom && order.totalAmount > 0 && (
+              <div className="grid grid-cols-2 gap-3">
+                <form action={completeWithId}>
+                  <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-3 text-sm font-bold transition-colors shadow-sm">
+                    ✓ Mark Completed
+                  </button>
+                </form>
+                <form action={sendPaymentWithId}>
+                  <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-xl py-3 text-sm font-bold transition-colors shadow-sm">
+                    💳 Request Payment
+                  </button>
+                </form>
+              </div>
+            )}
+
+            {order.status === 'ACCEPTED' && (isCustom || order.totalAmount === 0) && (
               <form action={completeWithId}>
                 <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-3 text-sm font-bold transition-colors shadow-sm">
                   ✓ Mark as Completed
                 </button>
               </form>
+            )}
+
+            {order.status === 'PAID' && (
+              <div className="space-y-3">
+                <div className="bg-emerald-50 border border-emerald-200 rounded-xl px-5 py-3 text-sm font-semibold text-center text-emerald-700">
+                  💳 Payment received
+                </div>
+                <form action={completeWithId}>
+                  <button type="submit" className="w-full bg-emerald-500 hover:bg-emerald-600 text-white rounded-xl py-3 text-sm font-bold transition-colors shadow-sm">
+                    ✓ Mark as Completed
+                  </button>
+                </form>
+              </div>
             )}
 
             {(order.status === 'REJECTED' || order.status === 'COMPLETED') && (
@@ -239,6 +344,31 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   <div className="flex justify-between">
                     <span className="text-gray-400">Amount</span>
                     <span className="font-bold text-gray-900">{formatPrice(order.totalAmount)}</span>
+                  </div>
+                )}
+                {order.discountCode && (
+                  <div className="flex justify-between">
+                    <span className="text-gray-400">Discount ({order.discountCode})</span>
+                    <span className="text-emerald-600 font-semibold">-{formatPrice(order.discountAmount)}</span>
+                  </div>
+                )}
+                {order.deliveryNote && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-400 flex-shrink-0">Delivery</span>
+                    <span className="text-gray-700 text-right">{order.deliveryNote}</span>
+                  </div>
+                )}
+                {order.paymentLinkId && (
+                  <div className="flex justify-between gap-2">
+                    <span className="text-gray-400">Pay link</span>
+                    <a
+                      href={`${APP_URL}/pay/${order.id}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-blue-500 hover:text-blue-700 font-medium"
+                    >
+                      Open →
+                    </a>
                   </div>
                 )}
               </div>

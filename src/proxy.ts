@@ -3,7 +3,7 @@ import { jwtVerify } from 'jose'
 
 const PROTECTED = /^\/dashboard/
 
-export async function middleware(req: NextRequest) {
+export async function proxy(req: NextRequest) {
   if (!PROTECTED.test(req.nextUrl.pathname)) return NextResponse.next()
 
   const token = req.cookies.get('zesto_auth')?.value

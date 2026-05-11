@@ -16,6 +16,7 @@ model BakeryConfig {
   address        String? @db.Text
   currency       String  @default("INR") @db.VarChar(3)
   welcomeMessage String  @default("Welcome! How can I help you today?") @db.VarChar(500)
+  minOrderAmount Int     @default(0)
 
   @@map("bakery_config")
 }
@@ -32,36 +33,53 @@ model MenuCategory {
 }
 
 model MenuItem {
-  id          String       @id @default(uuid())
+  id          String              @id @default(uuid())
   categoryId  String
-  category    MenuCategory @relation(fields: [categoryId], references: [id])
-  name        String       @db.VarChar(100)
-  description String?      @db.Text
+  category    MenuCategory        @relation(fields: [categoryId], references: [id])
+  name        String              @db.VarChar(100)
+  description String?             @db.Text
   price       Int
-  imageUrl    String?      @db.VarChar(500)
-  productUrl  String?      @db.VarChar(500)
-  available   Boolean      @default(true)
-  sortOrder   Int          @default(0)
+  imageUrl    String?             @db.VarChar(500)
+  productUrl  String?             @db.VarChar(500)
+  available   Boolean             @default(true)
+  sortOrder   Int                 @default(0)
   orderItems  OrderItem[]
+  variants    MenuItemVariant[]
 
   @@index([categoryId])
   @@map("menu_items")
 }
 
+model MenuItemVariant {
+  id         String   @id @default(uuid())
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  name       String   @db.VarChar(100)
+  priceDelta Int      @default(0)
+  sortOrder  Int      @default(0)
+
+  @@index([menuItemId])
+  @@map("menu_item_variants")
+}
+
 model Order {
-  id              String      @id @default(uuid())
-  customerPhone   String      @db.VarChar(20)
-  customerName    String      @db.VarChar(100)
-  status          OrderStatus @default(PENDING)
+  id              String        @id @default(uuid())
+  customerPhone   String        @db.VarChar(20)
+  customerName    String        @db.VarChar(100)
+  status          OrderStatus   @default(PENDING)
   totalAmount     Int
-  paymentLinkId   String?     @db.VarChar(100)
-  paymentLinkUrl  String?     @db.VarChar(500)
-  notes           String?     @db.Text
+  discountCode    String?       @db.VarChar(50)
+  discountAmount  Int           @default(0)
+  deliveryNote    String?       @db.VarChar(300)
+  paymentLinkId   String?       @db.VarChar(100)
+  paymentLinkUrl  String?       @db.VarChar(500)
+  notes           String?       @db.Text
   bakerNotifiedAt DateTime?
-  createdAt       DateTime    @default(now())
-  updatedAt       DateTime    @updatedAt
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
   items           OrderItem[]
   messages        Message[]
+  feedback        OrderFeedback?
 
   @@index([customerPhone])
   @@index([status])
@@ -77,10 +95,48 @@ model OrderItem {
   name       String   @db.VarChar(100)
   price      Int
   quantity   Int
+  variantName String? @db.VarChar(100)
 
   @@index([orderId])
   @@index([menuItemId])
   @@map("order_items")
+}
+
+model OrderFeedback {
+  id        String   @id @default(uuid())
+  orderId   String   @unique
+  order     Order    @relation(fields: [orderId], references: [id])
+  rating    Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+
+  @@index([orderId])
+  @@map("order_feedback")
+}
+
+model DiscountCode {
+  id         Int       @id @default(autoincrement())
+  code       String    @unique @db.VarChar(50)
+  type       String    @default("percent") @db.VarChar(10)
+  value      Int
+  minAmount  Int       @default(0)
+  maxUses    Int       @default(0)
+  usedCount  Int       @default(0)
+  active     Boolean   @default(true)
+  expiresAt  DateTime?
+  createdAt  DateTime  @default(now())
+
+  @@map("discount_codes")
+}
+
+model Broadcast {
+  id           Int      @id @default(autoincrement())
+  message      String   @db.Text
+  sentCount    Int      @default(0)
+  failedCount  Int      @default(0)
+  createdAt    DateTime @default(now())
+
+  @@map("broadcasts")
 }
 
 model Message {

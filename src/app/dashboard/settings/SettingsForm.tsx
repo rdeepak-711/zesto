@@ -10,6 +10,7 @@ type Config = {
   logoUrl: string | null
   bakerPhone: string
   whatsappNumber: string
+  minOrderAmount: number
 }
 
 export default function SettingsForm({ config }: { config: Config }) {
@@ -19,6 +20,7 @@ export default function SettingsForm({ config }: { config: Config }) {
     address: config.address ?? '',
     welcomeMessage: config.welcomeMessage,
     logoUrl: config.logoUrl ?? '',
+    minOrderAmount: (config.minOrderAmount / 100).toFixed(0),
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -30,7 +32,10 @@ export default function SettingsForm({ config }: { config: Config }) {
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        minOrderAmount: Math.round(Number(form.minOrderAmount || 0) * 100),
+      }),
     })
     setSaving(false)
     setSaved(true)
@@ -64,6 +69,21 @@ export default function SettingsForm({ config }: { config: Config }) {
         value={form.address}
         onChange={(v) => setForm((f) => ({ ...f, address: v }))}
       />
+
+      <div>
+        <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">
+          Minimum Order Amount (₹)
+        </label>
+        <input
+          type="number"
+          min="0"
+          value={form.minOrderAmount}
+          onChange={(e) => setForm((f) => ({ ...f, minOrderAmount: e.target.value }))}
+          placeholder="0 (no minimum)"
+          className="w-40 rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+        />
+        <p className="text-xs text-gray-400 mt-1">Set to 0 to disable minimum order check.</p>
+      </div>
 
       <div>
         <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">

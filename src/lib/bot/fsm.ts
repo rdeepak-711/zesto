@@ -4,15 +4,37 @@ export type BotState =
   | 'IDLE'
   | 'AWAITING_CATEGORY'
   | 'AWAITING_ITEM'
+  | 'AWAITING_VARIANT'
   | 'AWAITING_QUANTITY'
   | 'AWAITING_MORE'
+  | 'AWAITING_DELIVERY_DATE'
   | 'AWAITING_CONFIRMATION'
   | 'AWAITING_CUSTOM_DESCRIPTION'
   | 'AWAITING_CUSTOM_CONFIRM'
   | 'ORDER_PENDING'
 
+export type MenuItemVariant = { id: string; name: string; priceDelta: number }
 export type Category = { id: string; name: string; sortOrder: number; isCustom: boolean }
-export type MenuItem = { id: string; name: string; price: number; categoryId: string; description?: string | null; imageUrl?: string | null; productUrl?: string | null }
+export type MenuItem = {
+  id: string
+  name: string
+  price: number
+  categoryId: string
+  description?: string | null
+  imageUrl?: string | null
+  productUrl?: string | null
+  variants?: MenuItemVariant[]
+}
+
+export type DiscountCode = {
+  code: string
+  type: string
+  value: number
+  minAmount: number
+  maxUses: number
+  usedCount: number
+  expiresAt: Date | null
+}
 
 export type BotMessages = Record<string, string>
 
@@ -35,6 +57,8 @@ export type BotInput = {
   menuItems: MenuItem[]
   messages: BotMessages
   rules?: BotRule[]
+  minOrderAmount?: number
+  discountCodes?: DiscountCode[]
 }
 
 export type BotOutput = {
@@ -70,7 +94,8 @@ function formatItems(items: MenuItem[], categoryName: string, messages: BotMessa
       : item.imageUrl
         ? `\n   ${item.imageUrl}`
         : ''
-    return `${i + 1}. *${item.name}* — ${formatPrice(item.price)}${desc}${link}`
+    const variantNote = item.variants && item.variants.length > 0 ? ' _(multiple sizes)_' : ''
+    return `${i + 1}. *${item.name}* — ${formatPrice(item.price)}${variantNote}${desc}${link}`
   })
   return (
     `*${categoryName}*\n\n` +
@@ -80,13 +105,52 @@ function formatItems(items: MenuItem[], categoryName: string, messages: BotMessa
   )
 }
 
+function formatVariants(item: MenuItem, messages: BotMessages): string {
+  const variants = item.variants ?? []
+  const lines = variants.map((v, i) => {
+    const delta = v.priceDelta !== 0 ? ` (${v.priceDelta > 0 ? '+' : ''}${formatPrice(v.priceDelta)})` : ''
+    const finalPrice = item.price + v.priceDelta
+    return `${i + 1}. ${v.name} — ${formatPrice(finalPrice)}${delta}`
+  })
+  return (
+    (messages['variant_prompt'] ?? `Which size/variant would you like for *${item.name}*?`) +
+    `\n\n` +
+    lines.join('\n') +
+    `\n\n` +
+    (messages['variant_footer'] ?? 'Reply with a number.')
+  )
+}
+
 function formatCart(cart: CartItem[], messages: BotMessages): string {
   if (cart.length === 0) return messages['cart_empty'] ?? 'Your cart is empty.'
-  const lines = cart.map(
-    (item) => `• ${item.name} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`
-  )
+  const lines = cart.map((item) => {
+    const variant = item.variantName ? ` (${item.variantName})` : ''
+    return `• ${item.name}${variant} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`
+  })
   const total = cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
   return lines.join('\n') + `\n\n*Total: ${formatPrice(total)}*`
+}
+
+function formatOrderSummary(
+  cart: CartItem[],
+  context: BotContext,
+  messages: BotMessages
+): string {
+  const cartStr = formatCart(cart, messages)
+  const deliveryLine = context.deliveryNote
+    ? `\n\n📅 *Delivery:* ${context.deliveryNote}`
+    : ''
+  const discountLine =
+    context.appliedCode && context.appliedDiscount
+      ? `\n🏷️ *Discount (${context.appliedCode}):* -${formatPrice(context.appliedDiscount)}`
+      : ''
+  const finalTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0) - (context.appliedDiscount ?? 0)
+  const finalLine = discountLine ? `\n💰 *Final Total: ${formatPrice(finalTotal)}*` : ''
+  const codeHint = !context.appliedCode
+    ? `\n\n${messages['discount_hint'] ?? 'Have a discount code? Type it now, or type *yes* to confirm.'}`
+    : ''
+
+  return msg(messages, 'order_summary', { cart: cartStr }) + deliveryLine + discountLine + finalLine + codeHint
 }
 
 function formatAfterAdd(cart: CartItem[], categories: Category[], itemName: string, qty: number, messages: BotMessages): string {
@@ -94,6 +158,13 @@ function formatAfterAdd(cart: CartItem[], categories: Category[], itemName: stri
   const added = msg(messages, 'item_added', { item: itemName, qty: String(qty) })
   const more = msg(messages, 'add_more_prompt', { categories: formatCategoryList(categories) })
   return `${added}\n\n${cartStr}\n\n───────────────\n${more}`
+}
+
+function applyDiscount(code: DiscountCode, cartTotal: number): number {
+  if (code.type === 'percent') {
+    return Math.round((cartTotal * code.value) / 100)
+  }
+  return Math.min(code.value, cartTotal)
 }
 
 function matchesRule(rule: BotRule, msg: string, state: BotState): boolean {
@@ -107,7 +178,7 @@ function matchesRule(rule: BotRule, msg: string, state: BotState): boolean {
 }
 
 export function processMessage(input: BotInput): BotOutput {
-  const { message, state, cart, context, categories, menuItems, messages, rules = [] } = input
+  const { message, state, cart, context, categories, menuItems, messages, rules = [], minOrderAmount = 0, discountCodes = [] } = input
   const m = message.trim().toLowerCase()
   const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
 
@@ -196,7 +267,7 @@ export function processMessage(input: BotInput): BotOutput {
 
       if (matched.isCustom) {
         return {
-          reply: messages['custom_prompt'] ?? '✏️ Tell us exactly what you\'d like — flavor, size, quantity, occasion, any special requirements. Be as specific as possible!',
+          reply: messages['custom_prompt'] ?? "✏️ Tell us exactly what you'd like — flavor, size, quantity, occasion, any special requirements. Be as specific as possible!",
           nextState: 'AWAITING_CUSTOM_DESCRIPTION',
           cart,
           context: { ...context, selectedCategoryId: matched.id },
@@ -248,6 +319,22 @@ export function processMessage(input: BotInput): BotOutput {
         }
       }
 
+      // If item has variants, ask which variant
+      if (matched.variants && matched.variants.length > 0) {
+        return {
+          reply: formatVariants(matched, messages),
+          nextState: 'AWAITING_VARIANT',
+          cart,
+          context: {
+            ...context,
+            selectedItemId: matched.id,
+            selectedItemName: matched.name,
+            selectedItemPrice: matched.price,
+          },
+          placeOrder: false,
+        }
+      }
+
       return {
         reply: msg(messages, 'quantity_prompt', { item: matched.name }),
         nextState: 'AWAITING_QUANTITY',
@@ -257,6 +344,44 @@ export function processMessage(input: BotInput): BotOutput {
           selectedItemId: matched.id,
           selectedItemName: matched.name,
           selectedItemPrice: matched.price,
+        },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_VARIANT': {
+      const item = menuItems.find((i) => i.id === context.selectedItemId)
+      const variants = item?.variants ?? []
+
+      const byNumber = parseInt(m, 10)
+      let matched: MenuItemVariant | undefined
+
+      if (!isNaN(byNumber) && byNumber >= 1 && byNumber <= variants.length) {
+        matched = variants[byNumber - 1]
+      } else {
+        matched = variants.find((v) => v.name.toLowerCase().includes(m))
+      }
+
+      if (!matched) {
+        return {
+          reply: (messages['invalid_variant'] ?? 'Please choose a valid option.') + '\n\n' + formatVariants(item!, messages),
+          nextState: 'AWAITING_VARIANT',
+          cart,
+          context,
+          placeOrder: false,
+        }
+      }
+
+      const finalPrice = (context.selectedItemPrice ?? 0) + matched.priceDelta
+      return {
+        reply: msg(messages, 'quantity_prompt', { item: `${context.selectedItemName} (${matched.name})` }),
+        nextState: 'AWAITING_QUANTITY',
+        cart,
+        context: {
+          ...context,
+          selectedItemPrice: finalPrice,
+          selectedVariantName: matched.name,
+          selectedVariantDelta: matched.priceDelta,
         },
         placeOrder: false,
       }
@@ -274,7 +399,9 @@ export function processMessage(input: BotInput): BotOutput {
         }
       }
 
-      const existing = cart.findIndex((i) => i.menuItemId === context.selectedItemId)
+      const existing = cart.findIndex(
+        (i) => i.menuItemId === context.selectedItemId && i.variantName === (context.selectedVariantName ?? undefined)
+      )
       let newCart: CartItem[]
       if (existing >= 0) {
         newCart = cart.map((item, idx) =>
@@ -288,12 +415,17 @@ export function processMessage(input: BotInput): BotOutput {
             name: context.selectedItemName!,
             price: context.selectedItemPrice!,
             quantity: qty,
+            variantName: context.selectedVariantName,
           },
         ]
       }
 
+      const displayName = context.selectedVariantName
+        ? `${context.selectedItemName} (${context.selectedVariantName})`
+        : context.selectedItemName!
+
       return {
-        reply: formatAfterAdd(newCart, sorted, context.selectedItemName!, qty, messages),
+        reply: formatAfterAdd(newCart, sorted, displayName, qty, messages),
         nextState: 'AWAITING_MORE',
         cart: newCart,
         context: {
@@ -301,6 +433,8 @@ export function processMessage(input: BotInput): BotOutput {
           selectedItemId: undefined,
           selectedItemName: undefined,
           selectedItemPrice: undefined,
+          selectedVariantName: undefined,
+          selectedVariantDelta: undefined,
         },
         placeOrder: false,
       }
@@ -308,10 +442,22 @@ export function processMessage(input: BotInput): BotOutput {
 
     case 'AWAITING_MORE': {
       if (m === 'confirm' || m === 'done' || m === 'checkout') {
-        const cartStr = formatCart(cart, messages)
+        // Check min order amount
+        const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
+        if (minOrderAmount > 0 && cartTotal < minOrderAmount) {
+          return {
+            reply: msg(messages, 'min_order', { amount: formatPrice(minOrderAmount) }) ||
+              `Minimum order is ${formatPrice(minOrderAmount)}. Please add more items to continue.`,
+            nextState: 'AWAITING_MORE',
+            cart,
+            context,
+            placeOrder: false,
+          }
+        }
+
         return {
-          reply: msg(messages, 'order_summary', { cart: cartStr }),
-          nextState: 'AWAITING_CONFIRMATION',
+          reply: messages['delivery_date_prompt'] ?? "📅 When would you like your order? (e.g. *Tomorrow 3pm*, *Friday evening*, *ASAP*)",
+          nextState: 'AWAITING_DELIVERY_DATE',
           cart,
           context,
           placeOrder: false,
@@ -327,6 +473,15 @@ export function processMessage(input: BotInput): BotOutput {
       }
 
       if (matched) {
+        if (matched.isCustom) {
+          return {
+            reply: messages['custom_prompt'] ?? "✏️ Tell us exactly what you'd like.",
+            nextState: 'AWAITING_CUSTOM_DESCRIPTION',
+            cart,
+            context: { ...context, selectedCategoryId: matched.id },
+            placeOrder: false,
+          }
+        }
         const items = menuItems.filter((i) => i.categoryId === matched!.id)
         return {
           reply: formatItems(items, matched.name, messages),
@@ -342,6 +497,28 @@ export function processMessage(input: BotInput): BotOutput {
         nextState: 'AWAITING_MORE',
         cart,
         context,
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_DELIVERY_DATE': {
+      const dateInput = message.trim()
+      if (dateInput.length < 2) {
+        return {
+          reply: messages['delivery_date_prompt'] ?? "📅 When would you like your order? (e.g. *Tomorrow 3pm*, *Friday evening*, *ASAP*)",
+          nextState: 'AWAITING_DELIVERY_DATE',
+          cart,
+          context,
+          placeOrder: false,
+        }
+      }
+
+      const newContext = { ...context, deliveryNote: dateInput }
+      return {
+        reply: formatOrderSummary(cart, newContext, messages),
+        nextState: 'AWAITING_CONFIRMATION',
+        cart,
+        context: newContext,
         placeOrder: false,
       }
     }
@@ -365,6 +542,50 @@ export function processMessage(input: BotInput): BotOutput {
           placeOrder: false,
         }
       }
+
+      // Try as discount code
+      if (!context.appliedCode && discountCodes.length > 0) {
+        const input = message.trim().toUpperCase()
+        const code = discountCodes.find(
+          (c) =>
+            c.code.toUpperCase() === input &&
+            (c.maxUses === 0 || c.usedCount < c.maxUses) &&
+            (!c.expiresAt || new Date(c.expiresAt) > new Date())
+        )
+
+        if (code) {
+          const cartTotal = cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
+          if (cartTotal < code.minAmount) {
+            return {
+              reply: msg(messages, 'discount_min_amount', { amount: formatPrice(code.minAmount) }) ||
+                `This code requires a minimum order of ${formatPrice(code.minAmount)}.`,
+              nextState: 'AWAITING_CONFIRMATION',
+              cart,
+              context,
+              placeOrder: false,
+            }
+          }
+          const discountAmount = applyDiscount(code, cartTotal)
+          const newContext = { ...context, appliedCode: code.code, appliedDiscount: discountAmount }
+          return {
+            reply: formatOrderSummary(cart, newContext, messages),
+            nextState: 'AWAITING_CONFIRMATION',
+            cart,
+            context: newContext,
+            placeOrder: false,
+          }
+        }
+
+        return {
+          reply: msg(messages, 'invalid_code', {}) ||
+            "❌ That code isn't valid. Type *yes* to confirm your order or *cancel* to start over.",
+          nextState: 'AWAITING_CONFIRMATION',
+          cart,
+          context,
+          placeOrder: false,
+        }
+      }
+
       return {
         reply: messages['await_confirm'] ?? 'Reply *yes* to confirm your order or *cancel* to start over.',
         nextState: 'AWAITING_CONFIRMATION',
@@ -407,7 +628,7 @@ export function processMessage(input: BotInput): BotOutput {
       }
       if (m === 'edit' || m === 'no' || m === 'cancel') {
         return {
-          reply: messages['custom_prompt'] ?? '✏️ Tell us exactly what you\'d like — flavor, size, quantity, occasion, any special requirements.',
+          reply: messages['custom_prompt'] ?? "✏️ Tell us exactly what you'd like — flavor, size, quantity, occasion, any special requirements.",
           nextState: 'AWAITING_CUSTOM_DESCRIPTION',
           cart,
           context: { ...context, customDescription: undefined },
@@ -415,7 +636,7 @@ export function processMessage(input: BotInput): BotOutput {
         }
       }
       return {
-        reply: messages['custom_await_confirm'] ?? 'Reply *yes* to send to the baker, or *edit* to retype your request.',
+        reply: messages['custom_await_confirm'] ?? "Reply *yes* to send to the baker, or *edit* to retype your request.",
         nextState: 'AWAITING_CUSTOM_CONFIRM',
         cart,
         context,

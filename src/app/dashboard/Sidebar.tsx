@@ -9,6 +9,8 @@ const NAV = [
     items: [
       { href: '/dashboard', label: 'Orders', icon: '🛍️', exact: true },
       { href: '/dashboard/conversations', label: 'Conversations', icon: '💬' },
+      { href: '/dashboard/customers', label: 'Customers', icon: '👥' },
+      { href: '/dashboard/broadcast', label: 'Broadcast', icon: '📣' },
     ],
   },
   {
@@ -16,6 +18,7 @@ const NAV = [
     items: [
       { href: '/dashboard/menu', label: 'Menu', icon: '🍰' },
       { href: '/dashboard/bot', label: 'Bot Script', icon: '🤖' },
+      { href: '/dashboard/discounts', label: 'Discounts', icon: '🏷️' },
       { href: '/dashboard/analytics', label: 'Analytics', icon: '📊' },
       { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
     ],

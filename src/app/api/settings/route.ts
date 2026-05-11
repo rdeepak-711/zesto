@@ -15,10 +15,13 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const data = await req.json()
-  const allowed = ['bakeryName', 'address', 'welcomeMessage', 'logoUrl']
-  const update: Record<string, string> = {}
-  for (const key of allowed) {
+  const stringFields = ['bakeryName', 'address', 'welcomeMessage', 'logoUrl']
+  const update: Record<string, string | number> = {}
+  for (const key of stringFields) {
     if (data[key] !== undefined) update[key] = data[key]
+  }
+  if (data.minOrderAmount !== undefined) {
+    update.minOrderAmount = Number(data.minOrderAmount)
   }
 
   const config = await db.bakeryConfig.update({
