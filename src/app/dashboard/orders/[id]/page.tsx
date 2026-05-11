@@ -55,7 +55,10 @@ async function completeOrder(orderId: string) {
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
-  const order = await db.order.findUnique({ where: { id }, include: { items: true } })
+  const order = await db.order.findUnique({
+    where: { id },
+    include: { items: { include: { menuItem: { select: { imageUrl: true } } } } },
+  })
   if (!order) notFound()
 
   const acceptWithId = acceptOrder.bind(null, id)
@@ -117,14 +120,25 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 ) : (
                   <div className="space-y-3">
                     {order.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="w-7 h-7 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-xs font-bold text-orange-500 flex-shrink-0">
-                            {item.quantity}×
+                      <div key={item.id} className="flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-3 min-w-0">
+                          {item.menuItem.imageUrl ? (
+                            <img
+                              src={item.menuItem.imageUrl}
+                              alt={item.name}
+                              className="w-10 h-10 rounded-lg object-cover flex-shrink-0 border border-gray-100"
+                            />
+                          ) : (
+                            <div className="w-10 h-10 rounded-lg bg-orange-50 border border-orange-100 flex items-center justify-center text-xs font-bold text-orange-500 flex-shrink-0">
+                              🍰
+                            </div>
+                          )}
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                            <p className="text-xs text-gray-400">{item.quantity} × {formatPrice(item.price)}</p>
                           </div>
-                          <span className="text-sm text-gray-800">{item.name}</span>
                         </div>
-                        <span className="text-sm font-semibold text-gray-900">
+                        <span className="text-sm font-semibold text-gray-900 flex-shrink-0">
                           {formatPrice(item.price * item.quantity)}
                         </span>
                       </div>
