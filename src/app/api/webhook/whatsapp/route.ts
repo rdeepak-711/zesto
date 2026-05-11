@@ -61,82 +61,271 @@ function orderStatusMessage(
   return msg
 }
 
-async function handleBakerReply(body: string, bakerPhone: string, config: { minOrderAmount: number } | null) {
-  const upper = body.trim().toUpperCase()
-  const acceptMatch = upper.match(/^ACCEPT\s+([A-Z0-9]{8})/)
-  const rejectMatch = upper.match(/^REJECT\s+([A-Z0-9]{8})/)
-  const payMatch = upper.match(/^PAY\s+([A-Z0-9]{8})/)
+// ── Baker session helpers ─────────────────────────────────────────────────────
 
-  if (acceptMatch) {
-    const shortId = acceptMatch[1].toLowerCase()
-    const order = await db.order.findFirst({ where: { id: { startsWith: shortId } } })
+type BakerState = 'BAKER_IDLE' | 'BAKER_LIST' | 'BAKER_DETAIL'
 
-    if (!order || order.status !== 'PENDING') {
-      await sendWhatsApp(bakerPhone, `Order ${shortId.toUpperCase()} not found or already processed.`)
-      return
-    }
+type BakerContext = {
+  page?: number
+  selectedOrderId?: string
+}
 
-    await db.order.update({
-      where: { id: order.id },
-      data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() },
-    })
-
-    const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
-    await sendWhatsApp(
-      order.customerPhone,
-      `🎉 Your order *#${shortId.toUpperCase()}* has been accepted! The baker is now preparing it.${deliveryLine}\n\nWe'll notify you when it's ready. Thank you!`
-    )
-
-    const payHint = order.totalAmount > 0
-      ? `\n\nTo request payment: *PAY ${shortId.toUpperCase()}*`
-      : ''
-    await sendWhatsApp(bakerPhone, `✅ Order ${shortId.toUpperCase()} accepted. Customer notified.${payHint}`)
-
-  } else if (rejectMatch) {
-    const shortId = rejectMatch[1].toLowerCase()
-    const order = await db.order.findFirst({ where: { id: { startsWith: shortId } } })
-
-    if (!order || order.status !== 'PENDING') {
-      await sendWhatsApp(bakerPhone, `Order ${shortId.toUpperCase()} not found or already processed.`)
-      return
-    }
-
-    await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
-    await sendWhatsApp(
-      order.customerPhone,
-      `We're sorry, your order could not be processed at this time. Please try again later or contact us directly.`
-    )
-    await sendWhatsApp(bakerPhone, `❌ Order ${shortId.toUpperCase()} rejected. Customer notified.`)
-
-  } else if (payMatch) {
-    const shortId = payMatch[1].toLowerCase()
-    const order = await db.order.findFirst({ where: { id: { startsWith: shortId } } })
-
-    if (!order || order.status !== 'ACCEPTED') {
-      await sendWhatsApp(bakerPhone, `Order ${shortId.toUpperCase()} not found or not in ACCEPTED state.`)
-      return
-    }
-    if (order.totalAmount <= 0) {
-      await sendWhatsApp(bakerPhone, `Order ${shortId.toUpperCase()} has no payment amount set. Update it from the dashboard first.`)
-      return
-    }
-
-    const payUrl = `${APP_URL}/pay/${order.id}`
-    await sendWhatsApp(
-      order.customerPhone,
-      `💳 Payment request for your order *#${shortId.toUpperCase()}*\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`
-    )
-    await sendWhatsApp(bakerPhone, `💳 Payment link sent to customer for order ${shortId.toUpperCase()}.`)
-
-  } else {
-    await sendWhatsApp(
-      bakerPhone,
-      `*Baker commands:*\n\n` +
-      `✅ *ACCEPT ORDERID* — accept an order\n` +
-      `❌ *REJECT ORDERID* — reject an order\n` +
-      `💳 *PAY ORDERID* — send payment link to customer`
-    )
+async function getBakerSession(bakerPhone: string): Promise<{ state: BakerState; context: BakerContext }> {
+  const row = await db.botSession.upsert({
+    where: { customerPhone: bakerPhone },
+    update: {},
+    create: { customerPhone: bakerPhone, state: 'BAKER_IDLE' },
+  })
+  return {
+    state: (row.state as BakerState) || 'BAKER_IDLE',
+    context: JSON.parse(row.contextJson || '{}') as BakerContext,
   }
+}
+
+async function saveBakerSession(bakerPhone: string, state: BakerState, context: BakerContext) {
+  await db.botSession.update({
+    where: { customerPhone: bakerPhone },
+    data: { state, contextJson: JSON.stringify(context) },
+  })
+}
+
+// ── Baker list builder ────────────────────────────────────────────────────────
+
+const PAGE_SIZE = 5
+
+const STATUS_EMOJI: Record<string, string> = {
+  PENDING: '🕐', ACCEPTED: '👨‍🍳', PAID: '💳', COMPLETED: '✅', REJECTED: '❌',
+}
+const STATUS_LABEL: Record<string, string> = {
+  PENDING: 'Pending', ACCEPTED: 'Accepted', PAID: 'Paid', COMPLETED: 'Completed', REJECTED: 'Rejected',
+}
+
+async function sendBakerList(bakerPhone: string, page: number) {
+  const total = await db.order.count({ where: { status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } } })
+
+  if (total === 0) {
+    await sendWhatsApp(bakerPhone, `📋 No active orders right now.\n\nType *orders* to refresh.`)
+    await saveBakerSession(bakerPhone, 'BAKER_IDLE', {})
+    return
+  }
+
+  const orders = await db.order.findMany({
+    where: { status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
+    orderBy: [
+      { status: 'asc' }, // ACCEPTED < PAID < PENDING alphabetically — we'll handle priority below
+      { createdAt: 'asc' },
+    ],
+    skip: page * PAGE_SIZE,
+    take: PAGE_SIZE,
+    include: { items: true },
+  })
+
+  // Sort: PENDING first, then ACCEPTED, then PAID
+  const priority: Record<string, number> = { PENDING: 0, ACCEPTED: 1, PAID: 2 }
+  orders.sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9))
+
+  const totalPages = Math.ceil(total / PAGE_SIZE)
+  const start = page * PAGE_SIZE + 1
+  const end = Math.min(start + orders.length - 1, total)
+
+  const lines = orders.map((o, i) => {
+    const itemCount = o.items.reduce((s, it) => s + it.quantity, 0)
+    const phone = o.customerPhone.replace('+91', '')
+    const amount = o.totalAmount > 0 ? ` · ₹${(o.totalAmount / 100).toFixed(0)}` : ''
+    return `${i + 1}. ${STATUS_EMOJI[o.status]} ${phone} · ${itemCount} item${itemCount !== 1 ? 's' : ''}${amount} · ${STATUS_LABEL[o.status]}`
+  })
+
+  let msg = `📋 *Orders* (${start}–${end} of ${total})\n\n${lines.join('\n')}\n\nReply with a number to manage`
+  if (page > 0) msg += ` · *prev* for earlier`
+  if (end < total) msg += ` · *next* for more`
+
+  await sendWhatsApp(bakerPhone, msg)
+  await saveBakerSession(bakerPhone, 'BAKER_LIST', {
+    page,
+    // store order IDs in context so selection is stable even if new orders arrive
+    selectedOrderId: orders.map(o => o.id).join(',') as unknown as string,
+  })
+
+  // Overwrite with proper structure
+  await db.botSession.update({
+    where: { customerPhone: bakerPhone },
+    data: {
+      state: 'BAKER_LIST',
+      contextJson: JSON.stringify({ page, orderIds: orders.map(o => o.id) }),
+    },
+  })
+}
+
+async function sendBakerDetail(bakerPhone: string, orderId: string, returnPage: number) {
+  const order = await db.order.findUnique({
+    where: { id: orderId },
+    include: { items: true },
+  })
+
+  if (!order) {
+    await sendWhatsApp(bakerPhone, `Order not found. Type *orders* to refresh.`)
+    return
+  }
+
+  const shortId = order.id.slice(0, 8).toUpperCase()
+  const itemLines = order.items
+    .map(i => `• ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity}`)
+    .join('\n')
+  const deliveryLine = order.deliveryNote ? `\n📅 ${order.deliveryNote}` : ''
+  const amountLine = order.totalAmount > 0 ? `\n💰 ₹${(order.totalAmount / 100).toFixed(0)}` : ''
+
+  const actions: string[] = []
+  if (order.status === 'PENDING') {
+    actions.push('1️⃣ Accept')
+    actions.push('2️⃣ Reject')
+  } else if (order.status === 'ACCEPTED') {
+    actions.push('1️⃣ Request Payment')
+    actions.push('2️⃣ Reject')
+    actions.push('3️⃣ Mark Completed')
+  } else if (order.status === 'PAID') {
+    actions.push('1️⃣ Mark Completed')
+  }
+
+  const actionsText = actions.length > 0
+    ? `\n\n*Actions:*\n${actions.join('\n')}\n\nReply with action number · *back* to list`
+    : `\n\nNo actions available. *back* to return.`
+
+  const msg =
+    `📦 *Order #${shortId}*\n` +
+    `📱 ${order.customerPhone}${deliveryLine}${amountLine}\n` +
+    `Status: ${STATUS_EMOJI[order.status]} ${STATUS_LABEL[order.status]}\n\n` +
+    itemLines +
+    actionsText
+
+  await sendWhatsApp(bakerPhone, msg)
+  await db.botSession.update({
+    where: { customerPhone: bakerPhone },
+    data: {
+      state: 'BAKER_DETAIL',
+      contextJson: JSON.stringify({ selectedOrderId: orderId, page: returnPage }),
+    },
+  })
+}
+
+// ── Main baker handler ────────────────────────────────────────────────────────
+
+async function handleBakerReply(body: string, bakerPhone: string, _config: unknown) {
+  const m = body.trim().toLowerCase()
+
+  const { state, context } = await getBakerSession(bakerPhone)
+
+  // Global triggers — always available
+  if (m === 'orders' || m === 'list' || m === 'menu') {
+    await sendBakerList(bakerPhone, 0)
+    return
+  }
+
+  // ── BAKER_LIST state ───────────────────────────────────────────────────────
+  if (state === 'BAKER_LIST') {
+    const page: number = (context as { page?: number; orderIds?: string[] }).page ?? 0
+    const orderIds: string[] = (context as { page?: number; orderIds?: string[] }).orderIds ?? []
+
+    if (m === 'next') { await sendBakerList(bakerPhone, page + 1); return }
+    if (m === 'prev' && page > 0) { await sendBakerList(bakerPhone, page - 1); return }
+
+    const pick = parseInt(m, 10)
+    if (pick >= 1 && pick <= orderIds.length) {
+      await sendBakerDetail(bakerPhone, orderIds[pick - 1], page)
+      return
+    }
+  }
+
+  // ── BAKER_DETAIL state ─────────────────────────────────────────────────────
+  if (state === 'BAKER_DETAIL') {
+    const { selectedOrderId, page = 0 } = context as { selectedOrderId?: string; page?: number }
+
+    if (m === 'back' || m === '0') {
+      await sendBakerList(bakerPhone, page)
+      return
+    }
+
+    if (!selectedOrderId) {
+      await sendBakerList(bakerPhone, 0)
+      return
+    }
+
+    const order = await db.order.findUnique({ where: { id: selectedOrderId } })
+    if (!order) {
+      await sendWhatsApp(bakerPhone, `Order not found. Type *orders* to see active orders.`)
+      await saveBakerSession(bakerPhone, 'BAKER_IDLE', {})
+      return
+    }
+
+    const shortId = order.id.slice(0, 8).toUpperCase()
+    const action = parseInt(m, 10)
+
+    if (order.status === 'PENDING') {
+      if (action === 1) {
+        await db.order.update({ where: { id: order.id }, data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() } })
+        const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted! The baker is preparing it.${deliveryLine}\n\nWe'll notify you when it's ready.`)
+        await sendWhatsApp(bakerPhone, `✅ Order #${shortId} accepted. Customer notified.`)
+        await sendBakerList(bakerPhone, page)
+        return
+      }
+      if (action === 2) {
+        await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
+        await sendWhatsApp(order.customerPhone, `We're sorry, your order could not be processed. Please try again or contact us directly.`)
+        await sendWhatsApp(bakerPhone, `❌ Order #${shortId} rejected. Customer notified.`)
+        await sendBakerList(bakerPhone, page)
+        return
+      }
+    }
+
+    if (order.status === 'ACCEPTED') {
+      if (action === 1) {
+        if (order.totalAmount <= 0) {
+          await sendWhatsApp(bakerPhone, `Order #${shortId} has no amount set. Update it from the dashboard first, then try again.`)
+          await sendBakerDetail(bakerPhone, order.id, page)
+          return
+        }
+        const payUrl = `${APP_URL}/pay/${order.id}`
+        await sendWhatsApp(order.customerPhone, `💳 Payment request for *#${shortId}*\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay here:\n${payUrl}`)
+        await sendWhatsApp(bakerPhone, `💳 Payment link sent for order #${shortId}.`)
+        await sendBakerList(bakerPhone, page)
+        return
+      }
+      if (action === 2) {
+        await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
+        await sendWhatsApp(order.customerPhone, `We're sorry, your order could not be processed. Please try again or contact us directly.`)
+        await sendWhatsApp(bakerPhone, `❌ Order #${shortId} rejected. Customer notified.`)
+        await sendBakerList(bakerPhone, page)
+        return
+      }
+      if (action === 3) {
+        await db.order.update({ where: { id: order.id }, data: { status: 'COMPLETED' } })
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* is ready! Thank you for ordering with us.\n\nHow was your experience? Reply with a rating from *1–5* ⭐`)
+        await sendWhatsApp(bakerPhone, `✅ Order #${shortId} marked as completed.`)
+        await sendBakerList(bakerPhone, page)
+        return
+      }
+    }
+
+    if (order.status === 'PAID') {
+      if (action === 1) {
+        await db.order.update({ where: { id: order.id }, data: { status: 'COMPLETED' } })
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* is ready! Thank you for ordering with us.\n\nHow was your experience? Reply with a rating from *1–5* ⭐`)
+        await sendWhatsApp(bakerPhone, `✅ Order #${shortId} marked as completed.`)
+        await sendBakerList(bakerPhone, page)
+        return
+      }
+    }
+
+    // Unknown action — re-show detail
+    await sendBakerDetail(bakerPhone, order.id, page)
+    return
+  }
+
+  // ── Fallback / BAKER_IDLE ──────────────────────────────────────────────────
+  await sendWhatsApp(
+    bakerPhone,
+    `👋 *Baker Menu*\n\nType *orders* to see and manage active orders.`
+  )
 }
 
 export async function POST(req: NextRequest) {
