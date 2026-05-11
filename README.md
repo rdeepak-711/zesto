@@ -8,6 +8,7 @@ A WhatsApp ordering bot + baker dashboard for small bakeries. Customers order vi
 
 - **WhatsApp bot** — conversational ordering flow: categories → items → variants → quantity → delivery date → discount code → confirm
 - **Order tracking** — customers type `track` to get live status; `cancel order` to request cancellation
+- **Baker WhatsApp management** — type `orders` to get a paginated list; pick by number to see detail and take action (accept/reject/pay/complete) — no dashboard required
 - **Baker dashboard** — orders, conversations, customers CRM, menu manager, analytics, settings
 - **Product variants** — size/flavour options with price deltas per item
 - **Discount codes** — percent or flat-off, with expiry and usage limits; validated at checkout
@@ -73,7 +74,9 @@ A WhatsApp ordering bot + baker dashboard for small bakeries. Customers order vi
 
 Navigate to `/login` and enter the baker phone number (`BAKER_PHONE`). OTP is sent via WhatsApp.
 
-## WhatsApp Bot Commands
+## WhatsApp Commands
+
+### Customer
 
 | Command | Action |
 |---------|--------|
@@ -84,6 +87,24 @@ Navigate to `/login` and enter the baker phone number (`BAKER_PHONE`). OTP is se
 | `back` | Return to category list |
 | `confirm` | Proceed to checkout |
 | `1–5` (after order complete) | Submit star rating |
+
+### Baker
+
+| Command | Action |
+|---------|--------|
+| `orders` | Show paginated list of active orders (5 at a time) |
+| `1`–`5` (in list) | Select an order to manage |
+| `next` / `prev` | Navigate order pages |
+| `back` (in detail) | Return to order list |
+| `1`–`3` (in detail) | Execute action for the selected order |
+
+**Detail actions by status:**
+
+| Order Status | 1 | 2 | 3 |
+|---|---|---|---|
+| Pending | Accept | Reject | — |
+| Accepted | Request Payment | Reject | Mark Completed |
+| Paid | Mark Completed | — | — |
 
 ## Project Structure
 
