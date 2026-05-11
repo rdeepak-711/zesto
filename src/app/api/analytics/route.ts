@@ -6,54 +6,103 @@ export async function GET() {
   const auth = await getAuthFromCookies()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const [totalOrders, paidOrders, pendingOrders, revenueAgg, topItems] = await Promise.all([
+  const thirtyDaysAgo = new Date()
+  thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
+
+  const sixtyDaysAgo = new Date()
+  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
+
+  const [
+    totalOrders,
+    paidOrders,
+    pendingOrders,
+    revenueAgg,
+    topItems,
+    allCompletedOrders,
+    categoryRevenue,
+    feedbackRows,
+    recentOrdersRaw,
+  ] = await Promise.all([
     db.order.count(),
     db.order.count({ where: { status: { in: ['PAID', 'COMPLETED'] } } }),
     db.order.count({ where: { status: 'PENDING' } }),
     db.order.aggregate({
       where: { status: { in: ['PAID', 'COMPLETED'] } },
       _sum: { totalAmount: true },
+      _avg: { totalAmount: true },
     }),
     db.orderItem.groupBy({
       by: ['name'],
-      _sum: { quantity: true },
+      _sum: { quantity: true, price: true },
       orderBy: { _sum: { quantity: 'desc' } },
+      take: 8,
+    }),
+    // For repeat customer rate
+    db.order.groupBy({
+      by: ['customerPhone'],
+      _count: { id: true },
+    }),
+    // Revenue by category (join via order items + menu items)
+    db.orderItem.groupBy({
+      by: ['menuItemId', 'name'],
+      _sum: { price: true },
+      orderBy: { _sum: { price: 'desc' } },
       take: 5,
+    }),
+    // Average rating
+    db.orderFeedback.aggregate({ _avg: { rating: true }, _count: { rating: true } }),
+    // Last 30 days orders for daily chart
+    db.order.findMany({
+      where: {
+        status: { in: ['PAID', 'COMPLETED'] },
+        createdAt: { gte: thirtyDaysAgo },
+      },
+      select: { createdAt: true, totalAmount: true },
     }),
   ])
 
-  // Last 7 days revenue
-  const sevenDaysAgo = new Date()
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7)
-
-  const recentOrders = await db.order.findMany({
-    where: {
-      status: { in: ['PAID', 'COMPLETED'] },
-      createdAt: { gte: sevenDaysAgo },
-    },
-    select: { createdAt: true, totalAmount: true },
-  })
-
-  // Aggregate by day
+  // Daily revenue — last 30 days
   const dailyRevenue: Record<string, number> = {}
-  for (let i = 6; i >= 0; i--) {
+  for (let i = 29; i >= 0; i--) {
     const d = new Date()
     d.setDate(d.getDate() - i)
     dailyRevenue[d.toISOString().slice(0, 10)] = 0
   }
-  for (const order of recentOrders) {
+  for (const order of recentOrdersRaw) {
     const day = order.createdAt.toISOString().slice(0, 10)
-    if (dailyRevenue[day] !== undefined) {
-      dailyRevenue[day] += order.totalAmount
-    }
+    if (dailyRevenue[day] !== undefined) dailyRevenue[day] += order.totalAmount
   }
+
+  // Peak hour — count orders by hour of day
+  const allOrders = await db.order.findMany({
+    where: { status: { in: ['PAID', 'COMPLETED'] } },
+    select: { createdAt: true },
+  })
+  const hourCounts: number[] = Array(24).fill(0)
+  for (const o of allOrders) {
+    hourCounts[new Date(o.createdAt).getHours()]++
+  }
+
+  // Repeat customer rate
+  const repeatCount = allCompletedOrders.filter(r => r._count.id >= 2).length
+  const totalCustomers = allCompletedOrders.length
+  const repeatRate = totalCustomers > 0 ? Math.round((repeatCount / totalCustomers) * 100) : 0
+
+  // AOV
+  const aov = revenueAgg._avg.totalAmount ?? 0
 
   return NextResponse.json({
     totalOrders,
     paidOrders,
     pendingOrders,
     totalRevenue: revenueAgg._sum.totalAmount ?? 0,
-    topItems: topItems.map((i) => ({ name: i.name, quantity: i._sum.quantity ?? 0 })),
+    avgOrderValue: aov,
+    repeatRate,
+    totalCustomers,
+    avgRating: revenueAgg._avg ? (feedbackRows._avg.rating ?? 0) : 0,
+    ratingCount: feedbackRows._count.rating,
+    topItems: topItems.map(i => ({ name: i.name, quantity: i._sum.quantity ?? 0 })),
     dailyRevenue: Object.entries(dailyRevenue).map(([date, amount]) => ({ date, amount })),
+    peakHours: hourCounts.map((count, hour) => ({ hour, count })),
   })
 }
