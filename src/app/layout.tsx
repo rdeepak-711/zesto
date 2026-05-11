@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Zesto — Bakery Orders",
-  description: "Order fresh baked goods via WhatsApp",
+  title: "Zesto",
+  description: "WhatsApp ordering for your business",
 };
 
 export default function RootLayout({
