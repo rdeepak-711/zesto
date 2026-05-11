@@ -61,10 +61,11 @@ function orderStatusMessage(
   return msg
 }
 
-async function handleBakerReply(body: string, bakerPhone: string) {
+async function handleBakerReply(body: string, bakerPhone: string, config: { minOrderAmount: number } | null) {
   const upper = body.trim().toUpperCase()
   const acceptMatch = upper.match(/^ACCEPT\s+([A-Z0-9]{8})/)
   const rejectMatch = upper.match(/^REJECT\s+([A-Z0-9]{8})/)
+  const payMatch = upper.match(/^PAY\s+([A-Z0-9]{8})/)
 
   if (acceptMatch) {
     const shortId = acceptMatch[1].toLowerCase()
@@ -85,7 +86,12 @@ async function handleBakerReply(body: string, bakerPhone: string) {
       order.customerPhone,
       `🎉 Your order *#${shortId.toUpperCase()}* has been accepted! The baker is now preparing it.${deliveryLine}\n\nWe'll notify you when it's ready. Thank you!`
     )
-    await sendWhatsApp(bakerPhone, `✅ Order ${shortId.toUpperCase()} accepted. Customer notified.`)
+
+    const payHint = order.totalAmount > 0
+      ? `\n\nTo request payment: *PAY ${shortId.toUpperCase()}*`
+      : ''
+    await sendWhatsApp(bakerPhone, `✅ Order ${shortId.toUpperCase()} accepted. Customer notified.${payHint}`)
+
   } else if (rejectMatch) {
     const shortId = rejectMatch[1].toLowerCase()
     const order = await db.order.findFirst({ where: { id: { startsWith: shortId } } })
@@ -101,10 +107,34 @@ async function handleBakerReply(body: string, bakerPhone: string) {
       `We're sorry, your order could not be processed at this time. Please try again later or contact us directly.`
     )
     await sendWhatsApp(bakerPhone, `❌ Order ${shortId.toUpperCase()} rejected. Customer notified.`)
+
+  } else if (payMatch) {
+    const shortId = payMatch[1].toLowerCase()
+    const order = await db.order.findFirst({ where: { id: { startsWith: shortId } } })
+
+    if (!order || order.status !== 'ACCEPTED') {
+      await sendWhatsApp(bakerPhone, `Order ${shortId.toUpperCase()} not found or not in ACCEPTED state.`)
+      return
+    }
+    if (order.totalAmount <= 0) {
+      await sendWhatsApp(bakerPhone, `Order ${shortId.toUpperCase()} has no payment amount set. Update it from the dashboard first.`)
+      return
+    }
+
+    const payUrl = `${APP_URL}/pay/${order.id}`
+    await sendWhatsApp(
+      order.customerPhone,
+      `💳 Payment request for your order *#${shortId.toUpperCase()}*\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`
+    )
+    await sendWhatsApp(bakerPhone, `💳 Payment link sent to customer for order ${shortId.toUpperCase()}.`)
+
   } else {
     await sendWhatsApp(
       bakerPhone,
-      `To accept an order: *ACCEPT ORDERID*\nTo reject: *REJECT ORDERID*`
+      `*Baker commands:*\n\n` +
+      `✅ *ACCEPT ORDERID* — accept an order\n` +
+      `❌ *REJECT ORDERID* — reject an order\n` +
+      `💳 *PAY ORDERID* — send payment link to customer`
     )
   }
 }
@@ -121,7 +151,7 @@ export async function POST(req: NextRequest) {
 
   // Baker reply — route to accept/reject handler
   if (config && customerPhone === config.bakerPhone) {
-    await handleBakerReply(body, customerPhone)
+    await handleBakerReply(body, customerPhone, config)
     return new NextResponse('', { status: 200 })
   }
 

@@ -25,7 +25,7 @@ const NAV = [
   },
 ]
 
-export default function Sidebar() {
+export default function Sidebar({ pendingCount = 0 }: { pendingCount?: number }) {
   const pathname = usePathname()
 
   function isActive(href: string, exact?: boolean) {
@@ -65,7 +65,12 @@ export default function Sidebar() {
                 }`}
               >
                 <span className="text-base w-5 text-center">{item.icon}</span>
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {item.href === '/dashboard' && item.exact && pendingCount > 0 && (
+                  <span className="bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full min-w-[18px] text-center leading-none">
+                    {pendingCount > 99 ? '99+' : pendingCount}
+                  </span>
+                )}
               </Link>
             ))}
           </div>
