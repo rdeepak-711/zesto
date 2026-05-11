@@ -353,6 +353,14 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     <span className="font-bold text-gray-900">{formatPrice(order.totalAmount)}</span>
                   </div>
                 )}
+                <div className="flex justify-between">
+                  <span className="text-gray-400">Payment</span>
+                  {order.paymentMethod === 'COD' ? (
+                    <span className="font-semibold text-amber-600 bg-amber-50 px-2 py-0.5 rounded-full text-[11px]">💵 Cash on Delivery</span>
+                  ) : (
+                    <span className="font-semibold text-blue-600">Online</span>
+                  )}
+                </div>
                 {order.discountCode && (
                   <div className="flex justify-between">
                     <span className="text-gray-400">Discount ({order.discountCode})</span>

@@ -458,6 +458,87 @@ export async function POST(req: NextRequest) {
     return new NextResponse('', { status: 200 })
   }
 
+  // ── AI intent parser (natural language → fast-track to confirmation) ────────
+  // Only runs when customer is idle/starting fresh and OpenRouter is configured
+  if (
+    process.env.OPENROUTER_API_KEY &&
+    (session.state === 'IDLE' || session.state === 'AWAITING_CATEGORY') &&
+    body.length > 10
+  ) {
+    try {
+      const menuSummary = menuItems
+        .map(i => `${i.name} (₹${(i.price / 100).toFixed(0)})${i.variants?.length ? ` [variants: ${i.variants.map(v => v.name).join(', ')}]` : ''}`)
+        .join('\n')
+
+      const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'google/gemini-2.0-flash-lite',
+          messages: [
+            {
+              role: 'system',
+              content: `You are an order parser for a food business. Given a customer message and menu, extract order details as JSON.
+Return ONLY valid JSON in this exact shape:
+{"items": [{"name": "exact menu item name", "quantity": 1, "variantHint": "optional size hint"}], "deliveryNote": "optional delivery time", "confidence": 0.0-1.0}
+Rules:
+- Only include items that clearly match something on the menu (fuzzy ok, but must be reasonable)
+- If the message is not an order (greeting, question, gibberish), return {"items": [], "confidence": 0}
+- confidence > 0.7 means you are sure about the order
+- variantHint is optional, only set if customer mentioned a size/variant`,
+            },
+            { role: 'user', content: `Menu:\n${menuSummary}\n\nCustomer message: "${body}"` },
+          ],
+          max_tokens: 200,
+        }),
+      })
+
+      const aiJson = await aiRes.json()
+      const raw = aiJson.choices?.[0]?.message?.content ?? ''
+      const parsed = JSON.parse(raw.replace(/```json|```/g, '').trim())
+
+      if (parsed.confidence >= 0.75 && parsed.items?.length > 0) {
+        const cart: typeof session.cart = []
+        let allMatched = true
+
+        for (const ai of parsed.items) {
+          const item = menuItems.find(i =>
+            i.name.toLowerCase().includes(ai.name.toLowerCase()) ||
+            ai.name.toLowerCase().includes(i.name.toLowerCase())
+          )
+          if (!item) { allMatched = false; break }
+
+          let price = item.price
+          let variantName: string | undefined
+
+          if (item.variants?.length && ai.variantHint) {
+            const v = item.variants.find(v => v.name.toLowerCase().includes(ai.variantHint.toLowerCase()))
+            if (v) { price += v.priceDelta; variantName = v.name }
+          }
+
+          cart.push({ menuItemId: item.id, name: item.name, price, quantity: ai.quantity ?? 1, variantName })
+        }
+
+        if (allMatched && cart.length > 0) {
+          const context = { ...(session.context), deliveryNote: parsed.deliveryNote ?? undefined }
+          await saveSession(customerPhone, 'AWAITING_DELIVERY_DATE', cart, context)
+
+          const cartLines = cart.map(i => `• ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity} = ₹${((i.price * i.quantity) / 100).toFixed(0)}`).join('\n')
+          const total = cart.reduce((s, i) => s + i.price * i.quantity, 0)
+          const reply = parsed.deliveryNote
+            ? `Got it! Here's what I have:\n\n${cartLines}\n\n*Total: ₹${(total / 100).toFixed(0)}*\n\n📅 Delivery: ${parsed.deliveryNote}\n\nWhen exactly would you like it? (or confirm the time if that's right)`
+            : `Got it! Here's what I have:\n\n${cartLines}\n\n*Total: ₹${(total / 100).toFixed(0)}*\n\n📅 When would you like your order? (e.g. *Tomorrow 3pm*, *Friday evening*, *ASAP*)`
+
+          await db.message.create({ data: { customerPhone, body: reply, direction: 'OUT' } })
+          await sendWhatsApp(customerPhone, reply)
+          return new NextResponse('', { status: 200 })
+        }
+      }
+    } catch {
+      // AI failed or low confidence — fall through to FSM
+    }
+  }
+
   // ── FSM ───────────────────────────────────────────────────────────────────
   const output = processMessage({
     message: body,
@@ -511,6 +592,8 @@ export async function POST(req: NextRequest) {
     })
 
     let order
+    const paymentMethod = output.context.paymentMethod ?? 'ONLINE'
+
     if (isCustom && finalDescription) {
       order = await db.order.create({
         data: {
@@ -518,6 +601,7 @@ export async function POST(req: NextRequest) {
           customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
           totalAmount: 0,
           notes: finalDescription,
+          paymentMethod,
           deliveryNote: output.context.deliveryNote,
           items: {
             create: [{ menuItemId: 'item-custom', name: 'Custom Order', price: 0, quantity: 1 }],
@@ -530,7 +614,8 @@ export async function POST(req: NextRequest) {
           [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1 }],
           0,
           customerPhone,
-          config.bakerPhone
+          config.bakerPhone,
+          paymentMethod
         )
       }
     } else if (output.cart.length > 0) {
@@ -545,6 +630,7 @@ export async function POST(req: NextRequest) {
           totalAmount,
           discountCode: output.context.appliedCode,
           discountAmount,
+          paymentMethod,
           deliveryNote: output.context.deliveryNote,
           items: {
             create: output.cart.map((item) => ({
@@ -566,7 +652,7 @@ export async function POST(req: NextRequest) {
       }
 
       if (config) {
-        await notifyBaker(order.id, output.cart, totalAmount, customerPhone, config.bakerPhone)
+        await notifyBaker(order.id, output.cart, totalAmount, customerPhone, config.bakerPhone, paymentMethod)
       }
     }
 

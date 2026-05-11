@@ -20,6 +20,8 @@ export type BotContext = {
   deliveryNote?: string
   appliedCode?: string
   appliedDiscount?: number
+  paymentMethod?: 'ONLINE' | 'COD'
+  nudgedAt?: string
 }
 
 export type BotSession = {

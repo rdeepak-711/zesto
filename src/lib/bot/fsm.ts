@@ -11,6 +11,7 @@ export type BotState =
   | 'AWAITING_CONFIRMATION'
   | 'AWAITING_CUSTOM_DESCRIPTION'
   | 'AWAITING_CUSTOM_CONFIRM'
+  | 'AWAITING_PAYMENT_METHOD'
   | 'ORDER_PENDING'
 
 export type MenuItemVariant = { id: string; name: string; priceDelta: number }
@@ -526,11 +527,12 @@ export function processMessage(input: BotInput): BotOutput {
     case 'AWAITING_CONFIRMATION': {
       if (m === 'yes' || m === 'confirm') {
         return {
-          reply: messages['order_placed'] ?? '🎉 Order placed! The baker will review it and get back to you shortly.',
-          nextState: 'ORDER_PENDING',
+          reply: messages['payment_method_prompt'] ??
+            `💳 *How would you like to pay?*\n\n1️⃣ Pay online (UPI / Card / Netbanking)\n2️⃣ Cash on delivery\n\nReply with *1* or *2*`,
+          nextState: 'AWAITING_PAYMENT_METHOD',
           cart,
           context,
-          placeOrder: true,
+          placeOrder: false,
         }
       }
       if (m === 'cancel' || m === 'no') {
@@ -589,6 +591,35 @@ export function processMessage(input: BotInput): BotOutput {
       return {
         reply: messages['await_confirm'] ?? 'Reply *yes* to confirm your order or *cancel* to start over.',
         nextState: 'AWAITING_CONFIRMATION',
+        cart,
+        context,
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_PAYMENT_METHOD': {
+      if (m === '1' || m === 'online' || m === 'pay online') {
+        return {
+          reply: messages['order_placed'] ?? '🎉 Order placed! The baker will review it and get back to you shortly.',
+          nextState: 'ORDER_PENDING',
+          cart,
+          context: { ...context, paymentMethod: 'ONLINE' },
+          placeOrder: true,
+        }
+      }
+      if (m === '2' || m === 'cod' || m === 'cash' || m === 'cash on delivery') {
+        return {
+          reply: messages['order_placed_cod'] ?? '🎉 Order placed! Payment will be collected on delivery. The baker will confirm shortly.',
+          nextState: 'ORDER_PENDING',
+          cart,
+          context: { ...context, paymentMethod: 'COD' },
+          placeOrder: true,
+        }
+      }
+      return {
+        reply: messages['payment_method_prompt'] ??
+          `💳 *How would you like to pay?*\n\n1️⃣ Pay online (UPI / Card / Netbanking)\n2️⃣ Cash on delivery\n\nReply with *1* or *2*`,
+        nextState: 'AWAITING_PAYMENT_METHOD',
         cart,
         context,
         placeOrder: false,

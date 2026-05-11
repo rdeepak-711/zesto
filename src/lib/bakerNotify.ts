@@ -2,7 +2,7 @@ import { sendWhatsApp } from '@/lib/twilio'
 import type { CartItem } from '@/lib/botSession'
 
 function formatPrice(paise: number) {
-  return `₹${(paise / 100).toFixed(2)}`
+  return `₹${(paise / 100).toFixed(0)}`
 }
 
 export async function notifyBaker(
@@ -10,20 +10,28 @@ export async function notifyBaker(
   cart: CartItem[],
   totalAmount: number,
   customerPhone: string,
-  bakerPhone: string
+  bakerPhone: string,
+  paymentMethod: string = 'ONLINE'
 ) {
   const itemLines = cart
-    .map((item) => `• ${item.name} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`)
+    .map((item) => `• ${item.name}${item.variantName ? ` (${item.variantName})` : ''} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`)
     .join('\n')
 
+  const paymentLine = paymentMethod === 'COD'
+    ? `\n💵 *Payment: Cash on Delivery*`
+    : totalAmount > 0
+      ? `\n💳 Payment: Online`
+      : ''
+
+  const shortId = orderId.slice(0, 8).toUpperCase()
+
   const message =
-    `🛒 *New Order Received!*\n\n` +
-    `Order ID: ${orderId.slice(0, 8).toUpperCase()}\n` +
-    `Customer: ${customerPhone}\n\n` +
-    `*Items:*\n${itemLines}\n\n` +
-    `*Total: ${formatPrice(totalAmount)}*\n\n` +
-    `Reply *ACCEPT ${orderId.slice(0, 8).toUpperCase()}* to accept\n` +
-    `Reply *REJECT ${orderId.slice(0, 8).toUpperCase()}* to reject`
+    `🛒 *New Order!*\n\n` +
+    `ID: ${shortId}\n` +
+    `📱 ${customerPhone}\n\n` +
+    `${itemLines}\n\n` +
+    `*Total: ${formatPrice(totalAmount)}*${paymentLine}\n\n` +
+    `Type *orders* to manage`
 
   await sendWhatsApp(bakerPhone, message)
 }
