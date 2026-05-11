@@ -3,6 +3,7 @@ import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { sendWhatsApp } from '@/lib/twilio'
 import Link from 'next/link'
+import SendPaymentButton from './SendPaymentButton'
 
 const STATUS_META: Record<string, { label: string; bg: string; text: string; dot: string }> = {
   PENDING:   { label: 'Pending',   bg: 'bg-amber-50',   text: 'text-amber-700',  dot: 'bg-amber-400' },
@@ -56,7 +57,7 @@ async function rejectOrder(orderId: string) {
 async function completeOrder(orderId: string) {
   'use server'
   const order = await db.order.findUnique({ where: { id: orderId } })
-  if (!order || order.status !== 'ACCEPTED') return
+  if (!order || !['ACCEPTED', 'PAID'].includes(order.status)) return
   await db.order.update({ where: { id: orderId }, data: { status: 'COMPLETED' } })
   const shortId = order.id.slice(0, 8).toUpperCase()
   await sendWhatsApp(
@@ -67,16 +68,26 @@ async function completeOrder(orderId: string) {
   redirect('/dashboard')
 }
 
-async function sendPaymentLink(orderId: string) {
+async function sendPaymentLink(
+  orderId: string,
+  _prev: { ok: boolean; error?: string } | null,
+  _formData: FormData
+): Promise<{ ok: boolean; error?: string }> {
   'use server'
   const order = await db.order.findUnique({ where: { id: orderId } })
-  if (!order || order.status !== 'ACCEPTED' || order.totalAmount <= 0) return
+  if (!order || order.status !== 'ACCEPTED' || order.totalAmount <= 0)
+    return { ok: false, error: 'Order not eligible for payment' }
   const payUrl = `${APP_URL}/pay/${orderId}`
-  await sendWhatsApp(
-    order.customerPhone,
-    `💳 Payment request for your order #${order.id.slice(0, 8).toUpperCase()}\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`
-  )
-  revalidatePath(`/dashboard/orders/${orderId}`)
+  try {
+    await sendWhatsApp(
+      order.customerPhone,
+      `💳 Payment request for your order #${order.id.slice(0, 8).toUpperCase()}\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`
+    )
+    revalidatePath(`/dashboard/orders/${orderId}`)
+    return { ok: true }
+  } catch {
+    return { ok: false, error: 'Failed to send WhatsApp message' }
+  }
 }
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
@@ -252,11 +263,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                     ✓ Mark Completed
                   </button>
                 </form>
-                <form action={sendPaymentWithId}>
-                  <button type="submit" className="w-full bg-blue-500 hover:bg-blue-600 text-white rounded-xl py-3 text-sm font-bold transition-colors shadow-sm">
-                    💳 Request Payment
-                  </button>
-                </form>
+                <SendPaymentButton action={sendPaymentWithId} />
               </div>
             )}
 

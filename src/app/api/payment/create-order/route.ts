@@ -43,8 +43,9 @@ export async function POST(req: NextRequest) {
       amount: rzpOrder.amount,
       currency: rzpOrder.currency,
     })
-  } catch (err) {
+  } catch (err: unknown) {
+    const detail = err instanceof Error ? err.message : JSON.stringify(err)
     console.error('Razorpay create order error:', err)
-    return NextResponse.json({ error: 'Payment gateway error' }, { status: 500 })
+    return NextResponse.json({ error: `Payment gateway error: ${detail}` }, { status: 500 })
   }
 }
