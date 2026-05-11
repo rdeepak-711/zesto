@@ -1,31 +1,34 @@
-# Zesto — WhatsApp Bakery Ordering Bot
+# Zesto — WhatsApp Ordering for Any Business
 
-A WhatsApp ordering bot + baker dashboard for small bakeries. Customers order via WhatsApp chat; bakers manage orders, menu, and settings from a web dashboard.
+A multi-tenant WhatsApp ordering bot + owner dashboard. Customers order via WhatsApp chat; business owners manage orders, menu, and settings from a web dashboard. One deployment serves multiple businesses — each with isolated data, their own WhatsApp number, and their own owner login.
 
 **Live:** https://zesto-rose.vercel.app
 
 ## Features
 
+- **Multi-tenant SaaS** — one Zesto deployment hosts many businesses; each tenant has their own WA number, menu, orders, and owner login
 - **WhatsApp bot** — conversational ordering flow: categories → items → variants → quantity → delivery date → discount code → confirm
 - **Order tracking** — customers type `track` to get live status; `cancel order` to request cancellation
-- **Baker WhatsApp management** — type `orders` to get a paginated list; pick by number to see detail and take action (accept/reject/pay/complete) — no dashboard required
-- **Baker dashboard** — orders, conversations, customers CRM, menu manager, analytics, settings
+- **Owner WhatsApp management** — type `orders` to get a paginated list; pick by number to see detail and take action (accept/reject/pay/complete) — no dashboard required
+- **Owner dashboard** — orders, conversations, customers CRM, menu manager, analytics, settings
 - **Product variants** — size/flavour options with price deltas per item
 - **Discount codes** — percent or flat-off, with expiry and usage limits; validated at checkout
 - **Broadcast messages** — send a WhatsApp message to all past customers in one click
-- **Razorpay payments** — baker sends payment link via WhatsApp; customer pays in browser
+- **Razorpay payments** — owner sends payment link via WhatsApp; customer pays in browser
 - **Post-order feedback** — bot asks for a 1–5 star rating after order is completed
-- **OTP login** — baker authenticates via WhatsApp OTP (no password)
+- **OTP login** — owner authenticates via WhatsApp OTP (no password)
 - **Menu management** — add/edit items with image, description, variants; hide seasonal items
-- **Custom orders** — customer describes a bespoke cake; AI (OpenRouter) reformats for the baker
+- **Custom orders** — customer describes a bespoke item; AI (OpenRouter) reformats for the owner
+- **Business types** — bakery, restaurant, grocery, café, pharmacy, pet store, florist, or general retail
 
 ## Tech Stack
 
 - **Framework**: Next.js 16 App Router (Turbopack)
 - **Database**: TiDB Cloud (MySQL) via Prisma 7 + `@tidbcloud/prisma-adapter`
+- **Multi-tenancy**: shared DB, `tenantId` on every table, webhook routing by WA `To` number
 - **WhatsApp / SMS**: Twilio
 - **Payments**: Razorpay Standard Checkout
-- **Auth**: JWT (jose) + httpOnly cookie
+- **Auth**: JWT + httpOnly cookie — payload includes `{ phone, tenantId, role: 'owner' }`
 - **AI**: OpenRouter (Gemini 2.0 Flash Lite) for custom order formatting
 - **Hosting**: Vercel
 
@@ -42,7 +45,6 @@ A WhatsApp ordering bot + baker dashboard for small bakeries. Customers order vi
    ```
    DATABASE_URL=mysql://...@gateway.tidbcloud.com:4000/zesto
    JWT_SECRET=<64-char random hex>
-   BAKER_PHONE=+91XXXXXXXXXX
    TWILIO_ACCOUNT_SID=ACxxxxxxxx
    TWILIO_AUTH_TOKEN=xxxxxxxx
    TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
@@ -53,10 +55,11 @@ A WhatsApp ordering bot + baker dashboard for small bakeries. Customers order vi
    OPENROUTER_API_KEY=sk-or-...    # optional — falls back to raw description
    ```
 
-3. **Push schema + seed**
+3. **Push schema + seed + backfill first tenant**
    ```bash
    npx prisma db push
    npx tsx prisma/seed.ts
+   npx tsx prisma/backfill-tenant.ts   # creates the first tenant row from env vars
    ```
 
 4. **Run dev server**
@@ -72,7 +75,7 @@ A WhatsApp ordering bot + baker dashboard for small bakeries. Customers order vi
 
 ## Dashboard Login
 
-Navigate to `/login` and enter the baker phone number (`BAKER_PHONE`). OTP is sent via WhatsApp.
+Navigate to `/login` and enter the owner's phone number. OTP is sent via WhatsApp. Each tenant's owner phone is stored in the `tenants` table — the login resolves the tenant automatically from the phone number.
 
 ## WhatsApp Commands
 
@@ -88,7 +91,7 @@ Navigate to `/login` and enter the baker phone number (`BAKER_PHONE`). OTP is se
 | `confirm` | Proceed to checkout |
 | `1–5` (after order complete) | Submit star rating |
 
-### Baker
+### Owner
 
 | Command | Action |
 |---------|--------|
@@ -113,14 +116,16 @@ src/
   app/
     api/
       auth/              # send-otp, verify-otp, logout
-      broadcast/         # send WhatsApp to all customers
+      broadcast/         # send WhatsApp to tenant's customers
       contact/           # landing page contact form
-      discounts/         # discount code CRUD
-      menu/              # categories + items + variants CRUD
+      discounts/[id]/    # discount code CRUD (auth + tenantId scoped)
+      menu/              # categories + items + variants CRUD (tenantId scoped)
       payment/           # Razorpay create-order + verify
-      settings/          # bakery config update
-      webhook/whatsapp/  # Twilio WhatsApp webhook + bot FSM
+      settings/          # tenant config update
+      analytics/         # revenue + order analytics (tenantId scoped)
+      webhook/whatsapp/  # Twilio webhook — routes by To number → tenant → bot FSM
     dashboard/
+      layout.tsx         # auth check, tenant lookup, sidebar with businessName
       orders/            # order list + detail with progress tracker
       conversations/     # per-customer message inbox
       customers/         # CRM with spend summary
@@ -128,14 +133,14 @@ src/
       discounts/         # manage discount codes
       menu/              # menu manager with variants
       analytics/         # revenue + order charts
-      settings/          # bakery config, min order, bot messages
-    pay/[orderId]/       # customer-facing Razorpay payment page
+      settings/          # tenant config, min order, bot messages
+    pay/[orderId]/       # customer-facing Razorpay payment page (shows businessName)
     login/               # OTP login
   lib/
     bot/fsm.ts           # WhatsApp bot state machine (pure function)
-    botSession.ts        # session persistence (Redis-like via DB)
-    auth.ts              # JWT helpers
-    otp.ts               # OTP generation + verification
+    botSession.ts        # session persistence — compound key (phone, tenantId)
+    auth.ts              # JWT helpers — AuthPayload: { phone, tenantId, role }
+    otp.ts               # OTP generation + verification (stores tenantId)
     twilio.ts            # Twilio client + sendWhatsApp
     razorpay.ts          # Razorpay client + signature verification
     bakerNotify.ts       # new order WhatsApp notification
@@ -143,6 +148,7 @@ src/
 prisma/
   schema.prisma
   seed.ts
+  backfill-tenant.ts     # creates first tenant from TWILIO_WHATSAPP_NUMBER env var
 tests/
   unit/fsm.test.ts       # Vitest unit tests for bot FSM
 ```
