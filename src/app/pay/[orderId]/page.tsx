@@ -4,26 +4,26 @@ import PayButton from './PayButton'
 
 export default async function PayPage({ params }: { params: Promise<{ orderId: string }> }) {
   const { orderId } = await params
-  const [order, config] = await Promise.all([
-    db.order.findUnique({ where: { id: orderId } }),
-    db.bakeryConfig.findUnique({ where: { id: 1 } }),
-  ])
-
+  const order = await db.order.findUnique({ where: { id: orderId } })
   if (!order) notFound()
+
+  const tenant = order.tenantId
+    ? await db.tenant.findUnique({ where: { id: order.tenantId } })
+    : null
 
   const alreadyPaid = order.status === 'PAID' || order.status === 'COMPLETED'
 
   return (
     <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-4">
       <div className="w-full max-w-sm">
-        {/* Bakery header */}
+        {/* Business header */}
         <div className="text-center mb-8">
-          {config?.logoUrl ? (
-            <img src={config.logoUrl} alt={config.bakeryName} className="w-16 h-16 rounded-2xl mx-auto mb-3 object-cover" />
+          {tenant?.logoUrl ? (
+            <img src={tenant.logoUrl} alt={tenant.businessName} className="w-16 h-16 rounded-2xl mx-auto mb-3 object-cover" />
           ) : (
-            <div className="w-16 h-16 rounded-2xl bg-orange-100 flex items-center justify-center text-3xl mx-auto mb-3">🎂</div>
+            <div className="w-16 h-16 rounded-2xl bg-orange-100 flex items-center justify-center text-3xl mx-auto mb-3">🛍️</div>
           )}
-          <h1 className="text-xl font-bold text-gray-900">{config?.bakeryName ?? 'Bakery'}</h1>
+          <h1 className="text-xl font-bold text-gray-900">{tenant?.businessName ?? 'Store'}</h1>
           <p className="text-sm text-gray-500 mt-1">Complete your payment</p>
         </div>
 
@@ -58,7 +58,7 @@ export default async function PayPage({ params }: { params: Promise<{ orderId: s
                 totalAmount: order.totalAmount,
                 status: order.status,
               }}
-              config={{ bakeryName: config?.bakeryName ?? 'Bakery', logoUrl: config?.logoUrl ?? null }}
+              config={{ bakeryName: tenant?.businessName ?? 'Store', logoUrl: tenant?.logoUrl ?? null }}
             />
           )}
         </div>

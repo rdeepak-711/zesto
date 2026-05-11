@@ -1,8 +1,14 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import MenuManager from './MenuManager'
 
 export default async function MenuPage() {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
   const categories = await db.menuCategory.findMany({
+    where: { tenantId: auth.tenantId },
     orderBy: { sortOrder: 'asc' },
     include: {
       items: {

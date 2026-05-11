@@ -14,7 +14,7 @@ const NAV = [
     ],
   },
   {
-    section: 'Bakery',
+    section: 'Business',
     items: [
       { href: '/dashboard/menu', label: 'Menu', icon: '🍰' },
       { href: '/dashboard/bot', label: 'Bot Script', icon: '🤖' },
@@ -25,7 +25,7 @@ const NAV = [
   },
 ]
 
-export default function Sidebar({ pendingCount = 0 }: { pendingCount?: number }) {
+export default function Sidebar({ pendingCount = 0, businessName = 'Dashboard' }: { pendingCount?: number; businessName?: string }) {
   const pathname = usePathname()
 
   function isActive(href: string, exact?: boolean) {
@@ -38,11 +38,11 @@ export default function Sidebar({ pendingCount = 0 }: { pendingCount?: number })
       <div className="px-4 py-5 border-b border-white/10 mb-3">
         <div className="flex items-center gap-2.5">
           <div className="w-8 h-8 bg-orange-500 rounded-[9px] flex items-center justify-center text-base flex-shrink-0">
-            🎂
+            🛍️
           </div>
-          <div>
-            <div className="text-[17px] font-bold text-white leading-none">Zesto</div>
-            <div className="text-[11px] text-white/40 mt-0.5">Baker Dashboard</div>
+          <div className="min-w-0">
+            <div className="text-[17px] font-bold text-white leading-none truncate">{businessName}</div>
+            <div className="text-[11px] text-white/40 mt-0.5">Owner Dashboard</div>
           </div>
         </div>
       </div>
@@ -83,7 +83,7 @@ export default function Sidebar({ pendingCount = 0 }: { pendingCount?: number })
           <div className="w-7 h-7 rounded-full bg-orange-500/20 border border-orange-500/40 flex items-center justify-center text-[12px] font-bold text-orange-400 flex-shrink-0">
             B
           </div>
-          <span className="text-[13px] text-white/70">Baker</span>
+          <span className="text-[13px] text-white/70">Owner</span>
         </div>
         <form action="/api/auth/logout" method="POST">
           <button

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { verifyOtp } from '@/lib/otp'
 import { signToken, authCookieOptions } from '@/lib/auth'
+import { db } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
   const { phone, code } = await req.json()
@@ -9,12 +10,18 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Phone and code required' }, { status: 400 })
   }
 
-  const { valid } = await verifyOtp(phone, code)
-  if (!valid) {
+  const { valid, tenantId } = await verifyOtp(phone, code)
+  if (!valid || !tenantId) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
   }
 
-  const token = signToken({ phone, role: 'baker' })
+  // Verify tenant still active
+  const tenant = await db.tenant.findFirst({ where: { id: tenantId, ownerPhone: phone, active: true } })
+  if (!tenant) {
+    return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
+  }
+
+  const token = signToken({ phone, tenantId, role: 'owner' })
   const res = NextResponse.json({ ok: true })
   res.cookies.set(authCookieOptions(token))
   return res

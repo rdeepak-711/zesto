@@ -6,11 +6,9 @@ export async function GET() {
   const auth = await getAuthFromCookies()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
+  const tid = auth.tenantId
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-
-  const sixtyDaysAgo = new Date()
-  sixtyDaysAgo.setDate(sixtyDaysAgo.getDate() - 60)
 
   const [
     totalOrders,
@@ -19,41 +17,37 @@ export async function GET() {
     revenueAgg,
     topItems,
     allCompletedOrders,
-    categoryRevenue,
     feedbackRows,
     recentOrdersRaw,
   ] = await Promise.all([
-    db.order.count(),
-    db.order.count({ where: { status: { in: ['PAID', 'COMPLETED'] } } }),
-    db.order.count({ where: { status: 'PENDING' } }),
+    db.order.count({ where: { tenantId: tid } }),
+    db.order.count({ where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] } } }),
+    db.order.count({ where: { tenantId: tid, status: 'PENDING' } }),
     db.order.aggregate({
-      where: { status: { in: ['PAID', 'COMPLETED'] } },
+      where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] } },
       _sum: { totalAmount: true },
       _avg: { totalAmount: true },
     }),
     db.orderItem.groupBy({
       by: ['name'],
-      _sum: { quantity: true, price: true },
+      where: { order: { tenantId: tid } },
+      _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
       take: 8,
     }),
-    // For repeat customer rate
     db.order.groupBy({
       by: ['customerPhone'],
+      where: { tenantId: tid },
       _count: { id: true },
     }),
-    // Revenue by category (join via order items + menu items)
-    db.orderItem.groupBy({
-      by: ['menuItemId', 'name'],
-      _sum: { price: true },
-      orderBy: { _sum: { price: 'desc' } },
-      take: 5,
+    db.orderFeedback.aggregate({
+      where: { order: { tenantId: tid } },
+      _avg: { rating: true },
+      _count: { rating: true },
     }),
-    // Average rating
-    db.orderFeedback.aggregate({ _avg: { rating: true }, _count: { rating: true } }),
-    // Last 30 days orders for daily chart
     db.order.findMany({
       where: {
+        tenantId: tid,
         status: { in: ['PAID', 'COMPLETED'] },
         createdAt: { gte: thirtyDaysAgo },
       },
@@ -75,7 +69,7 @@ export async function GET() {
 
   // Peak hour — count orders by hour of day
   const allOrders = await db.order.findMany({
-    where: { status: { in: ['PAID', 'COMPLETED'] } },
+    where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] } },
     select: { createdAt: true },
   })
   const hourCounts: number[] = Array(24).fill(0)
@@ -88,18 +82,15 @@ export async function GET() {
   const totalCustomers = allCompletedOrders.length
   const repeatRate = totalCustomers > 0 ? Math.round((repeatCount / totalCustomers) * 100) : 0
 
-  // AOV
-  const aov = revenueAgg._avg.totalAmount ?? 0
-
   return NextResponse.json({
     totalOrders,
     paidOrders,
     pendingOrders,
     totalRevenue: revenueAgg._sum.totalAmount ?? 0,
-    avgOrderValue: aov,
+    avgOrderValue: revenueAgg._avg.totalAmount ?? 0,
     repeatRate,
     totalCustomers,
-    avgRating: revenueAgg._avg ? (feedbackRows._avg.rating ?? 0) : 0,
+    avgRating: feedbackRows._avg.rating ?? 0,
     ratingCount: feedbackRows._count.rating,
     topItems: topItems.map(i => ({ name: i.name, quantity: i._sum.quantity ?? 0 })),
     dailyRevenue: Object.entries(dailyRevenue).map(([date, amount]) => ({ date, amount })),

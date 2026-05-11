@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
 function formatDate(d: Date) {
@@ -10,8 +12,12 @@ function formatPrice(paise: number) {
 }
 
 export default async function CustomersPage() {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
   const customers = await db.order.groupBy({
     by: ['customerPhone', 'customerName'],
+    where: { tenantId: auth.tenantId },
     _count: { id: true },
     _sum: { totalAmount: true },
     _max: { createdAt: true },

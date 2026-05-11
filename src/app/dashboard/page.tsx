@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
 const STATUS_LABELS: Record<string, string> = {
@@ -42,17 +44,26 @@ export default async function OrdersPage({
 }: {
   searchParams: Promise<{ status?: string }>
 }) {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
   const params = await searchParams
   const statusFilter = params.status?.toUpperCase()
 
   const [orders, counts] = await Promise.all([
     db.order.findMany({
-      where: statusFilter ? { status: statusFilter as never } : undefined,
+      where: statusFilter
+        ? { tenantId: auth.tenantId, status: statusFilter as never }
+        : { tenantId: auth.tenantId },
       orderBy: { createdAt: 'desc' },
       take: 50,
       include: { items: { take: 2 } },
     }),
-    db.order.groupBy({ by: ['status'], _count: true }),
+    db.order.groupBy({
+      by: ['status'],
+      where: { tenantId: auth.tenantId },
+      _count: true,
+    }),
   ])
 
   const countMap: Record<string, number> = {}

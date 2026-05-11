@@ -3,11 +3,12 @@ import { cookies } from 'next/headers'
 
 const JWT_SECRET = process.env.JWT_SECRET!
 const COOKIE_NAME = 'zesto_auth'
-const MAX_AGE = 60 * 60 * 24 // 24h in seconds
+const MAX_AGE = 60 * 60 * 24 * 7 // 7 days
 
 export type AuthPayload = {
   phone: string
-  role: 'baker'
+  tenantId: string
+  role: 'owner'
 }
 
 export function signToken(payload: AuthPayload): string {

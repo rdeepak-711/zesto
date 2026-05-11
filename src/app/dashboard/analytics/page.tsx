@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 
 function formatPrice(paise: number) {
   return `₹${(paise / 100).toFixed(0)}`
@@ -12,6 +14,10 @@ function formatHour(h: number) {
 }
 
 export default async function AnalyticsPage() {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
+  const tid = auth.tenantId
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
@@ -26,28 +32,33 @@ export default async function AnalyticsPage() {
     recentOrders,
     allPaidOrders,
   ] = await Promise.all([
-    db.order.count(),
-    db.order.count({ where: { status: { in: ['PAID', 'COMPLETED'] } } }),
-    db.order.count({ where: { status: 'PENDING' } }),
+    db.order.count({ where: { tenantId: tid } }),
+    db.order.count({ where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] } } }),
+    db.order.count({ where: { tenantId: tid, status: 'PENDING' } }),
     db.order.aggregate({
-      where: { status: { in: ['PAID', 'COMPLETED'] } },
+      where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] } },
       _sum: { totalAmount: true },
       _avg: { totalAmount: true },
     }),
     db.orderItem.groupBy({
       by: ['name'],
+      where: { order: { tenantId: tid } },
       _sum: { quantity: true },
       orderBy: { _sum: { quantity: 'desc' } },
       take: 8,
     }),
-    db.order.groupBy({ by: ['customerPhone'], _count: { id: true } }),
-    db.orderFeedback.aggregate({ _avg: { rating: true }, _count: { rating: true } }),
+    db.order.groupBy({ by: ['customerPhone'], where: { tenantId: tid }, _count: { id: true } }),
+    db.orderFeedback.aggregate({
+      where: { order: { tenantId: tid } },
+      _avg: { rating: true },
+      _count: { rating: true },
+    }),
     db.order.findMany({
-      where: { status: { in: ['PAID', 'COMPLETED'] }, createdAt: { gte: thirtyDaysAgo } },
+      where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] }, createdAt: { gte: thirtyDaysAgo } },
       select: { createdAt: true, totalAmount: true },
     }),
     db.order.findMany({
-      where: { status: { in: ['PAID', 'COMPLETED'] } },
+      where: { tenantId: tid, status: { in: ['PAID', 'COMPLETED'] } },
       select: { createdAt: true },
     }),
   ])

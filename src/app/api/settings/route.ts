@@ -6,8 +6,8 @@ export async function GET() {
   const auth = await getAuthFromCookies()
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
-  const config = await db.bakeryConfig.findUnique({ where: { id: 1 } })
-  return NextResponse.json(config)
+  const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId } })
+  return NextResponse.json(tenant)
 }
 
 export async function PATCH(req: NextRequest) {
@@ -15,7 +15,7 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const data = await req.json()
-  const stringFields = ['bakeryName', 'address', 'welcomeMessage', 'logoUrl']
+  const stringFields = ['businessName', 'businessType', 'address', 'logoUrl']
   const update: Record<string, string | number> = {}
   for (const key of stringFields) {
     if (data[key] !== undefined) update[key] = data[key]
@@ -24,10 +24,10 @@ export async function PATCH(req: NextRequest) {
     update.minOrderAmount = Number(data.minOrderAmount)
   }
 
-  const config = await db.bakeryConfig.update({
-    where: { id: 1 },
+  const tenant = await db.tenant.update({
+    where: { id: auth.tenantId },
     data: update,
   })
 
-  return NextResponse.json(config)
+  return NextResponse.json(tenant)
 }

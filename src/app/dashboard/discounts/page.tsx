@@ -1,8 +1,17 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import DiscountManager from './DiscountManager'
 
 export default async function DiscountsPage() {
-  const codes = await db.discountCode.findMany({ orderBy: { createdAt: 'desc' } })
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
+  const codes = await db.discountCode.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { createdAt: 'desc' },
+  })
+
   return (
     <div>
       <div className="bg-white border-b border-gray-200 px-8 h-14 flex items-center gap-3">

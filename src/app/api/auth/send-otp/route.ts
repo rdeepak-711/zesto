@@ -9,12 +9,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Phone required' }, { status: 400 })
   }
 
-  const config = await db.bakeryConfig.findUnique({ where: { id: 1 } })
-  if (!config || config.bakerPhone !== phone) {
+  const tenant = await db.tenant.findFirst({ where: { ownerPhone: phone, active: true } })
+  if (!tenant) {
     // Return 200 to avoid enumeration — don't reveal valid phones
     return NextResponse.json({ ok: true })
   }
 
-  await sendOtp(phone)
+  await sendOtp(phone, tenant.id)
   return NextResponse.json({ ok: true })
 }

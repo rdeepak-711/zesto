@@ -1,6 +1,7 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
 import Link from 'next/link'
-import { notFound } from 'next/navigation'
+import { notFound, redirect } from 'next/navigation'
 
 function formatTime(d: Date) {
   return d.toLocaleTimeString('en-IN', { hour: '2-digit', minute: '2-digit' })
@@ -65,16 +66,19 @@ export default async function ConversationPage({
 }: {
   params: Promise<{ phone: string }>
 }) {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
   const { phone } = await params
   const customerPhone = decodeURIComponent(phone)
 
   const [messages, lastOrder] = await Promise.all([
     db.message.findMany({
-      where: { customerPhone },
+      where: { tenantId: auth.tenantId, customerPhone },
       orderBy: { createdAt: 'asc' },
     }),
     db.order.findFirst({
-      where: { customerPhone },
+      where: { tenantId: auth.tenantId, customerPhone },
       orderBy: { createdAt: 'desc' },
       select: { id: true, customerName: true },
     }),

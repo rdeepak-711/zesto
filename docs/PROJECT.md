@@ -23,12 +23,13 @@ The system runs entirely on existing tools customers already have — WhatsApp �
 
 ### Baker Side
 
-1. Baker receives a WhatsApp notification with order details and short ID
-2. Baker replies `ACCEPT ORDERID` or `REJECT ORDERID` directly from WhatsApp
-3. On accept, baker sets a delivery date — customer is notified automatically
-4. Baker can optionally request payment via Razorpay — a link is sent to the customer's WhatsApp
-5. Once payment is received, baker marks the order as Completed
-6. Customer gets a completion message and a 1–5 feedback prompt
+1. Baker receives a WhatsApp notification with order details when a new order arrives
+2. Baker types `orders` to open the interactive order manager
+3. Bot shows a paginated list (5 at a time): customer number, item count, amount, status
+4. Baker replies with a number to select an order and sees full detail + numbered actions
+5. For PENDING: Accept or Reject. For ACCEPTED: Request Payment, Reject, or Mark Completed. For PAID: Mark Completed.
+6. Each action notifies the customer automatically and returns baker to the updated list
+7. Customer gets a completion message and a 1–5 feedback prompt
 
 ### Dashboard
 
@@ -46,6 +47,8 @@ Customer (WhatsApp)
        │
        ▼
 POST /api/webhook/whatsapp   ← entry point for all inbound messages
+       │
+       ├─ Baker handler (stateful menu: orders → list → detail → action)
        │
        ├─ Pre-FSM handlers (track, cancel order, 1–5 feedback rating)
        │
@@ -356,11 +359,23 @@ All bot reply text is stored in the `bot_messages` table and editable from the d
 
 ## Baker WhatsApp Commands
 
-| Message | Action |
-|---|---|
-| `ACCEPT ORDERID` | Accept the order, notify customer |
-| `REJECT ORDERID` | Reject the order, notify customer |
-| `REJECT ORDERID` (in response to cancellation) | Accept cancellation request |
+The baker WhatsApp interface is a stateful menu-driven system. Baker sessions are stored in the `bot_sessions` table keyed by baker phone (same table as customer sessions, no collision since baker check runs first).
+
+| Message | State | Action |
+|---|---|---|
+| `orders` | any | Show paginated list of active orders (PENDING → ACCEPTED → PAID, 5 at a time) |
+| `1`–`5` | BAKER_LIST | Select that order, show detail + action menu |
+| `next` | BAKER_LIST | Next page of orders |
+| `prev` | BAKER_LIST | Previous page of orders |
+| `back` / `0` | BAKER_DETAIL | Return to order list at same page |
+| `1` | BAKER_DETAIL (PENDING) | Accept — notify customer, return to list |
+| `2` | BAKER_DETAIL (PENDING) | Reject — notify customer, return to list |
+| `1` | BAKER_DETAIL (ACCEPTED) | Send Razorpay payment link to customer |
+| `2` | BAKER_DETAIL (ACCEPTED) | Reject — notify customer, return to list |
+| `3` | BAKER_DETAIL (ACCEPTED) | Mark Completed — notify customer with feedback prompt |
+| `1` | BAKER_DETAIL (PAID) | Mark Completed — notify customer with feedback prompt |
+
+Baker session states: `BAKER_IDLE` → `BAKER_LIST` → `BAKER_DETAIL` → (action executes) → `BAKER_LIST`
 
 ---
 

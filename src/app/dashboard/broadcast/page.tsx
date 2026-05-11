@@ -1,8 +1,17 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import BroadcastManager from './BroadcastManager'
 
 export default async function BroadcastPage() {
-  const broadcasts = await db.broadcast.findMany({ orderBy: { createdAt: 'desc' }, take: 20 })
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
+  const broadcasts = await db.broadcast.findMany({
+    where: { tenantId: auth.tenantId },
+    orderBy: { createdAt: 'desc' },
+    take: 20,
+  })
 
   return (
     <div>

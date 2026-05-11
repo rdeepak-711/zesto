@@ -13,7 +13,16 @@ export async function POST(req: NextRequest) {
   }
 
   const item = await db.menuItem.create({
-    data: { name, categoryId, price: Math.round(price), description, imageUrl, productUrl, available: available ?? true },
+    data: {
+      tenantId: auth.tenantId,
+      name,
+      categoryId,
+      price: Math.round(price),
+      description,
+      imageUrl,
+      productUrl,
+      available: available ?? true,
+    },
   })
 
   return NextResponse.json(item, { status: 201 })

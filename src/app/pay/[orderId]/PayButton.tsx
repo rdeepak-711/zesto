@@ -11,12 +11,12 @@ type Order = {
   status: string
 }
 
-type BakeryConfig = {
+type BusinessConfig = {
   bakeryName: string
   logoUrl: string | null
 }
 
-export default function PayButton({ order, config }: { order: Order; config: BakeryConfig }) {
+export default function PayButton({ order, config }: { order: Order; config: BusinessConfig }) {
   const [loading, setLoading] = useState(false)
   const [paid, setPaid] = useState(order.status === 'PAID')
   const [error, setError] = useState<string | null>(null)

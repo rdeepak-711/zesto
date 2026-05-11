@@ -1,4 +1,6 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import Link from 'next/link'
 
 function stripMarkdown(text: string): string {
@@ -16,7 +18,11 @@ function formatDate(d: Date) {
 }
 
 export default async function ConversationsPage() {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
   const recentMessages = await db.message.findMany({
+    where: { tenantId: auth.tenantId },
     orderBy: { createdAt: 'desc' },
     distinct: ['customerPhone'],
     take: 50,
@@ -35,10 +41,9 @@ export default async function ConversationsPage() {
     )
   }
 
-  // Fetch customer names from orders
   const phones = recentMessages.map((m) => m.customerPhone)
   const lastOrders = await db.order.findMany({
-    where: { customerPhone: { in: phones } },
+    where: { tenantId: auth.tenantId, customerPhone: { in: phones } },
     orderBy: { createdAt: 'desc' },
     distinct: ['customerPhone'],
     select: { customerPhone: true, customerName: true },

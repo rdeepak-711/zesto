@@ -32,11 +32,11 @@ export type BotSession = {
   context: BotContext
 }
 
-export async function getSession(customerPhone: string): Promise<BotSession> {
+export async function getSession(customerPhone: string, tenantId: string): Promise<BotSession> {
   const row = await db.botSession.upsert({
-    where: { customerPhone },
+    where: { customerPhone_tenantId: { customerPhone, tenantId } },
     update: {},
-    create: { customerPhone },
+    create: { customerPhone, tenantId },
   })
 
   return {
@@ -52,10 +52,11 @@ export async function saveSession(
   customerPhone: string,
   state: string,
   cart: CartItem[],
-  context: BotContext
+  context: BotContext,
+  tenantId: string
 ) {
   await db.botSession.update({
-    where: { customerPhone },
+    where: { customerPhone_tenantId: { customerPhone, tenantId } },
     data: {
       state,
       cartJson: JSON.stringify(cart),
@@ -64,9 +65,9 @@ export async function saveSession(
   })
 }
 
-export async function resetSession(customerPhone: string) {
+export async function resetSession(customerPhone: string, tenantId: string) {
   await db.botSession.update({
-    where: { customerPhone },
+    where: { customerPhone_tenantId: { customerPhone, tenantId } },
     data: {
       state: 'IDLE',
       cartJson: '[]',

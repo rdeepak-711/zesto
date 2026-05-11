@@ -4,6 +4,7 @@ import { getSession, saveSession, resetSession } from '@/lib/botSession'
 import { processMessage, type BotState } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker } from '@/lib/bakerNotify'
+import type { Tenant } from '@prisma/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
@@ -36,10 +37,10 @@ function orderStatusMessage(
   }
 
   const statusText: Record<string, string> = {
-    PENDING: 'Awaiting baker review',
-    ACCEPTED: 'Baker is preparing your order',
+    PENDING: 'Awaiting review',
+    ACCEPTED: 'Being prepared',
     PAID: 'Payment received — being prepared',
-    COMPLETED: 'Ready! 🎂',
+    COMPLETED: 'Ready! 🎉',
     REJECTED: 'Order was declined',
   }
 
@@ -61,35 +62,36 @@ function orderStatusMessage(
   return msg
 }
 
-// ── Baker session helpers ─────────────────────────────────────────────────────
+// ── Owner (baker) session helpers ─────────────────────────────────────────────
 
-type BakerState = 'BAKER_IDLE' | 'BAKER_LIST' | 'BAKER_DETAIL'
+type OwnerState = 'BAKER_IDLE' | 'BAKER_LIST' | 'BAKER_DETAIL'
 
-type BakerContext = {
+type OwnerContext = {
   page?: number
+  orderIds?: string[]
   selectedOrderId?: string
 }
 
-async function getBakerSession(bakerPhone: string): Promise<{ state: BakerState; context: BakerContext }> {
+async function getOwnerSession(ownerPhone: string, tenantId: string): Promise<{ state: OwnerState; context: OwnerContext }> {
   const row = await db.botSession.upsert({
-    where: { customerPhone: bakerPhone },
+    where: { customerPhone_tenantId: { customerPhone: ownerPhone, tenantId } },
     update: {},
-    create: { customerPhone: bakerPhone, state: 'BAKER_IDLE' },
+    create: { customerPhone: ownerPhone, tenantId, state: 'BAKER_IDLE' },
   })
   return {
-    state: (row.state as BakerState) || 'BAKER_IDLE',
-    context: JSON.parse(row.contextJson || '{}') as BakerContext,
+    state: (row.state as OwnerState) || 'BAKER_IDLE',
+    context: JSON.parse(row.contextJson || '{}') as OwnerContext,
   }
 }
 
-async function saveBakerSession(bakerPhone: string, state: BakerState, context: BakerContext) {
+async function saveOwnerSession(ownerPhone: string, tenantId: string, state: OwnerState, context: OwnerContext) {
   await db.botSession.update({
-    where: { customerPhone: bakerPhone },
+    where: { customerPhone_tenantId: { customerPhone: ownerPhone, tenantId } },
     data: { state, contextJson: JSON.stringify(context) },
   })
 }
 
-// ── Baker list builder ────────────────────────────────────────────────────────
+// ── Owner order list builder ──────────────────────────────────────────────────
 
 const PAGE_SIZE = 5
 
@@ -100,27 +102,25 @@ const STATUS_LABEL: Record<string, string> = {
   PENDING: 'Pending', ACCEPTED: 'Accepted', PAID: 'Paid', COMPLETED: 'Completed', REJECTED: 'Rejected',
 }
 
-async function sendBakerList(bakerPhone: string, page: number) {
-  const total = await db.order.count({ where: { status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } } })
+async function sendOwnerList(ownerPhone: string, tenant: Tenant, page: number) {
+  const total = await db.order.count({
+    where: { tenantId: tenant.id, status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
+  })
 
   if (total === 0) {
-    await sendWhatsApp(bakerPhone, `📋 No active orders right now.\n\nType *orders* to refresh.`)
-    await saveBakerSession(bakerPhone, 'BAKER_IDLE', {})
+    await sendWhatsApp(ownerPhone, `📋 No active orders right now.\n\nType *orders* to refresh.`)
+    await saveOwnerSession(ownerPhone, tenant.id, 'BAKER_IDLE', {})
     return
   }
 
   const orders = await db.order.findMany({
-    where: { status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
-    orderBy: [
-      { status: 'asc' }, // ACCEPTED < PAID < PENDING alphabetically — we'll handle priority below
-      { createdAt: 'asc' },
-    ],
+    where: { tenantId: tenant.id, status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
+    orderBy: { createdAt: 'asc' },
     skip: page * PAGE_SIZE,
     take: PAGE_SIZE,
     include: { items: true },
   })
 
-  // Sort: PENDING first, then ACCEPTED, then PAID
   const priority: Record<string, number> = { PENDING: 0, ACCEPTED: 1, PAID: 2 }
   orders.sort((a, b) => (priority[a.status] ?? 9) - (priority[b.status] ?? 9))
 
@@ -139,16 +139,9 @@ async function sendBakerList(bakerPhone: string, page: number) {
   if (page > 0) msg += ` · *prev* for earlier`
   if (end < total) msg += ` · *next* for more`
 
-  await sendWhatsApp(bakerPhone, msg)
-  await saveBakerSession(bakerPhone, 'BAKER_LIST', {
-    page,
-    // store order IDs in context so selection is stable even if new orders arrive
-    selectedOrderId: orders.map(o => o.id).join(',') as unknown as string,
-  })
-
-  // Overwrite with proper structure
+  await sendWhatsApp(ownerPhone, msg)
   await db.botSession.update({
-    where: { customerPhone: bakerPhone },
+    where: { customerPhone_tenantId: { customerPhone: ownerPhone, tenantId: tenant.id } },
     data: {
       state: 'BAKER_LIST',
       contextJson: JSON.stringify({ page, orderIds: orders.map(o => o.id) }),
@@ -156,14 +149,14 @@ async function sendBakerList(bakerPhone: string, page: number) {
   })
 }
 
-async function sendBakerDetail(bakerPhone: string, orderId: string, returnPage: number) {
+async function sendOwnerDetail(ownerPhone: string, tenantId: string, orderId: string, returnPage: number) {
   const order = await db.order.findUnique({
     where: { id: orderId },
     include: { items: true },
   })
 
   if (!order) {
-    await sendWhatsApp(bakerPhone, `Order not found. Type *orders* to refresh.`)
+    await sendWhatsApp(ownerPhone, `Order not found. Type *orders* to refresh.`)
     return
   }
 
@@ -197,9 +190,9 @@ async function sendBakerDetail(bakerPhone: string, orderId: string, returnPage: 
     itemLines +
     actionsText
 
-  await sendWhatsApp(bakerPhone, msg)
+  await sendWhatsApp(ownerPhone, msg)
   await db.botSession.update({
-    where: { customerPhone: bakerPhone },
+    where: { customerPhone_tenantId: { customerPhone: ownerPhone, tenantId } },
     data: {
       state: 'BAKER_DETAIL',
       contextJson: JSON.stringify({ selectedOrderId: orderId, page: returnPage }),
@@ -207,52 +200,48 @@ async function sendBakerDetail(bakerPhone: string, orderId: string, returnPage: 
   })
 }
 
-// ── Main baker handler ────────────────────────────────────────────────────────
+// ── Main owner handler ────────────────────────────────────────────────────────
 
-async function handleBakerReply(body: string, bakerPhone: string, _config: unknown) {
+async function handleOwnerReply(body: string, ownerPhone: string, tenant: Tenant) {
   const m = body.trim().toLowerCase()
+  const { state, context } = await getOwnerSession(ownerPhone, tenant.id)
 
-  const { state, context } = await getBakerSession(bakerPhone)
-
-  // Global triggers — always available
   if (m === 'orders' || m === 'list' || m === 'menu') {
-    await sendBakerList(bakerPhone, 0)
+    await sendOwnerList(ownerPhone, tenant, 0)
     return
   }
 
-  // ── BAKER_LIST state ───────────────────────────────────────────────────────
   if (state === 'BAKER_LIST') {
-    const page: number = (context as { page?: number; orderIds?: string[] }).page ?? 0
-    const orderIds: string[] = (context as { page?: number; orderIds?: string[] }).orderIds ?? []
+    const page = context.page ?? 0
+    const orderIds = context.orderIds ?? []
 
-    if (m === 'next') { await sendBakerList(bakerPhone, page + 1); return }
-    if (m === 'prev' && page > 0) { await sendBakerList(bakerPhone, page - 1); return }
+    if (m === 'next') { await sendOwnerList(ownerPhone, tenant, page + 1); return }
+    if (m === 'prev' && page > 0) { await sendOwnerList(ownerPhone, tenant, page - 1); return }
 
     const pick = parseInt(m, 10)
     if (pick >= 1 && pick <= orderIds.length) {
-      await sendBakerDetail(bakerPhone, orderIds[pick - 1], page)
+      await sendOwnerDetail(ownerPhone, tenant.id, orderIds[pick - 1], page)
       return
     }
   }
 
-  // ── BAKER_DETAIL state ─────────────────────────────────────────────────────
   if (state === 'BAKER_DETAIL') {
-    const { selectedOrderId, page = 0 } = context as { selectedOrderId?: string; page?: number }
+    const { selectedOrderId, page = 0 } = context
 
     if (m === 'back' || m === '0') {
-      await sendBakerList(bakerPhone, page)
+      await sendOwnerList(ownerPhone, tenant, page)
       return
     }
 
     if (!selectedOrderId) {
-      await sendBakerList(bakerPhone, 0)
+      await sendOwnerList(ownerPhone, tenant, 0)
       return
     }
 
     const order = await db.order.findUnique({ where: { id: selectedOrderId } })
     if (!order) {
-      await sendWhatsApp(bakerPhone, `Order not found. Type *orders* to see active orders.`)
-      await saveBakerSession(bakerPhone, 'BAKER_IDLE', {})
+      await sendWhatsApp(ownerPhone, `Order not found. Type *orders* to see active orders.`)
+      await saveOwnerSession(ownerPhone, tenant.id, 'BAKER_IDLE', {})
       return
     }
 
@@ -263,16 +252,16 @@ async function handleBakerReply(body: string, bakerPhone: string, _config: unkno
       if (action === 1) {
         await db.order.update({ where: { id: order.id }, data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() } })
         const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
-        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted! The baker is preparing it.${deliveryLine}\n\nWe'll notify you when it's ready.`)
-        await sendWhatsApp(bakerPhone, `✅ Order #${shortId} accepted. Customer notified.`)
-        await sendBakerList(bakerPhone, page)
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\nWe'll notify you when it's ready.`)
+        await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Customer notified.`)
+        await sendOwnerList(ownerPhone, tenant, page)
         return
       }
       if (action === 2) {
         await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
         await sendWhatsApp(order.customerPhone, `We're sorry, your order could not be processed. Please try again or contact us directly.`)
-        await sendWhatsApp(bakerPhone, `❌ Order #${shortId} rejected. Customer notified.`)
-        await sendBakerList(bakerPhone, page)
+        await sendWhatsApp(ownerPhone, `❌ Order #${shortId} rejected. Customer notified.`)
+        await sendOwnerList(ownerPhone, tenant, page)
         return
       }
     }
@@ -280,28 +269,28 @@ async function handleBakerReply(body: string, bakerPhone: string, _config: unkno
     if (order.status === 'ACCEPTED') {
       if (action === 1) {
         if (order.totalAmount <= 0) {
-          await sendWhatsApp(bakerPhone, `Order #${shortId} has no amount set. Update it from the dashboard first, then try again.`)
-          await sendBakerDetail(bakerPhone, order.id, page)
+          await sendWhatsApp(ownerPhone, `Order #${shortId} has no amount set. Update it from the dashboard first.`)
+          await sendOwnerDetail(ownerPhone, tenant.id, order.id, page)
           return
         }
         const payUrl = `${APP_URL}/pay/${order.id}`
         await sendWhatsApp(order.customerPhone, `💳 Payment request for *#${shortId}*\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay here:\n${payUrl}`)
-        await sendWhatsApp(bakerPhone, `💳 Payment link sent for order #${shortId}.`)
-        await sendBakerList(bakerPhone, page)
+        await sendWhatsApp(ownerPhone, `💳 Payment link sent for order #${shortId}.`)
+        await sendOwnerList(ownerPhone, tenant, page)
         return
       }
       if (action === 2) {
         await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
         await sendWhatsApp(order.customerPhone, `We're sorry, your order could not be processed. Please try again or contact us directly.`)
-        await sendWhatsApp(bakerPhone, `❌ Order #${shortId} rejected. Customer notified.`)
-        await sendBakerList(bakerPhone, page)
+        await sendWhatsApp(ownerPhone, `❌ Order #${shortId} rejected. Customer notified.`)
+        await sendOwnerList(ownerPhone, tenant, page)
         return
       }
       if (action === 3) {
         await db.order.update({ where: { id: order.id }, data: { status: 'COMPLETED' } })
-        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* is ready! Thank you for ordering with us.\n\nHow was your experience? Reply with a rating from *1–5* ⭐`)
-        await sendWhatsApp(bakerPhone, `✅ Order #${shortId} marked as completed.`)
-        await sendBakerList(bakerPhone, page)
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* is ready! Thank you.\n\nHow was your experience? Reply with a rating from *1–5* ⭐`)
+        await sendWhatsApp(ownerPhone, `✅ Order #${shortId} marked as completed.`)
+        await sendOwnerList(ownerPhone, tenant, page)
         return
       }
     }
@@ -309,22 +298,20 @@ async function handleBakerReply(body: string, bakerPhone: string, _config: unkno
     if (order.status === 'PAID') {
       if (action === 1) {
         await db.order.update({ where: { id: order.id }, data: { status: 'COMPLETED' } })
-        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* is ready! Thank you for ordering with us.\n\nHow was your experience? Reply with a rating from *1–5* ⭐`)
-        await sendWhatsApp(bakerPhone, `✅ Order #${shortId} marked as completed.`)
-        await sendBakerList(bakerPhone, page)
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* is ready! Thank you.\n\nHow was your experience? Reply with a rating from *1–5* ⭐`)
+        await sendWhatsApp(ownerPhone, `✅ Order #${shortId} marked as completed.`)
+        await sendOwnerList(ownerPhone, tenant, page)
         return
       }
     }
 
-    // Unknown action — re-show detail
-    await sendBakerDetail(bakerPhone, order.id, page)
+    await sendOwnerDetail(ownerPhone, tenant.id, order.id, page)
     return
   }
 
-  // ── Fallback / BAKER_IDLE ──────────────────────────────────────────────────
   await sendWhatsApp(
-    bakerPhone,
-    `👋 *Baker Menu*\n\nType *orders* to see and manage active orders.`
+    ownerPhone,
+    `👋 *${tenant.businessName} — Owner Menu*\n\nType *orders* to see and manage active orders.`
   )
 }
 
@@ -332,44 +319,53 @@ export async function POST(req: NextRequest) {
   const formData = await req.formData()
   const body = formData.get('Body')?.toString().trim() ?? ''
   const rawFrom = formData.get('From')?.toString() ?? ''
+  const rawTo = formData.get('To')?.toString() ?? ''
   const customerPhone = rawFrom.replace('whatsapp:', '')
+  const toNumber = rawTo.replace('whatsapp:', '')
 
   if (!customerPhone) return new NextResponse('Bad Request', { status: 400 })
 
-  const config = await db.bakeryConfig.findUnique({ where: { id: 1 } })
+  // Route by the WA number that received the message → find the right tenant
+  const tenant = await db.tenant.findUnique({
+    where: { whatsappNumber: toNumber },
+  })
 
-  // Baker reply — route to accept/reject handler
-  if (config && customerPhone === config.bakerPhone) {
-    await handleBakerReply(body, customerPhone, config)
+  if (!tenant || !tenant.active) {
+    return new NextResponse('', { status: 200 })
+  }
+
+  // Owner reply — route to owner handler
+  if (customerPhone === tenant.ownerPhone) {
+    await handleOwnerReply(body, customerPhone, tenant)
     return new NextResponse('', { status: 200 })
   }
 
   // Customer message — run bot FSM
   const [session, categories, menuItems, botMessageRows, rules, discountCodes] = await Promise.all([
-    getSession(customerPhone),
+    getSession(customerPhone, tenant.id),
     db.menuCategory.findMany({
-      where: { active: true },
+      where: { tenantId: tenant.id, active: true },
       select: { id: true, name: true, sortOrder: true, isCustom: true },
     }),
     db.menuItem.findMany({
-      where: { available: true },
+      where: { tenantId: tenant.id, available: true },
       include: { variants: { orderBy: { sortOrder: 'asc' } } },
     }),
-    db.botMessage.findMany(),
-    db.botRule.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
-    db.discountCode.findMany({ where: { active: true } }),
+    db.botMessage.findMany({ where: { tenantId: tenant.id } }),
+    db.botRule.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: { sortOrder: 'asc' } }),
+    db.discountCode.findMany({ where: { tenantId: tenant.id, active: true } }),
   ])
 
   const messages = Object.fromEntries(botMessageRows.map((r) => [r.key, r.value]))
   const m = body.trim().toLowerCase()
 
-  await db.message.create({ data: { customerPhone, body, direction: 'IN' } })
+  await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN' } })
 
   // ── Feedback collection (1-5 rating for completed order) ─────────────────
   const rating = parseInt(body.trim(), 10)
   if (rating >= 1 && rating <= 5) {
     const recentCompleted = await db.order.findFirst({
-      where: { customerPhone, status: 'COMPLETED' },
+      where: { tenantId: tenant.id, customerPhone, status: 'COMPLETED' },
       orderBy: { updatedAt: 'desc' },
       include: { feedback: true },
     })
@@ -377,9 +373,9 @@ export async function POST(req: NextRequest) {
       await db.orderFeedback.create({ data: { orderId: recentCompleted.id, rating } })
       const reply =
         rating >= 4
-          ? `🌟 Thank you for the ${rating}-star rating! We're glad you loved it. See you again soon! 🎂`
+          ? `🌟 Thank you for the ${rating}-star rating! We're glad you loved it. See you again soon! 🎉`
           : `Thank you for your feedback (${rating}/5). We'll use this to improve. Hope to serve you better next time!`
-      await db.message.create({ data: { customerPhone, body: reply, direction: 'OUT' } })
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
       await sendWhatsApp(customerPhone, reply)
       return new NextResponse('', { status: 200 })
     }
@@ -389,10 +385,7 @@ export async function POST(req: NextRequest) {
   const trackTriggers = ['track', 'status', 'order status', 'my order', 'track order', 'where is my order']
   if (trackTriggers.includes(m)) {
     const activeOrder = await db.order.findFirst({
-      where: {
-        customerPhone,
-        status: { in: ['PENDING', 'ACCEPTED', 'PAID'] },
-      },
+      where: { tenantId: tenant.id, customerPhone, status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
       orderBy: { createdAt: 'desc' },
       include: { items: true },
     })
@@ -400,7 +393,7 @@ export async function POST(req: NextRequest) {
     let reply: string
     if (!activeOrder) {
       const lastOrder = await db.order.findFirst({
-        where: { customerPhone },
+        where: { tenantId: tenant.id, customerPhone },
         orderBy: { createdAt: 'desc' },
         include: { items: true },
       })
@@ -413,7 +406,7 @@ export async function POST(req: NextRequest) {
       reply = orderStatusMessage(activeOrder, messages)
     }
 
-    await db.message.create({ data: { customerPhone, body: reply, direction: 'OUT' } })
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply)
     return new NextResponse('', { status: 200 })
   }
@@ -421,16 +414,13 @@ export async function POST(req: NextRequest) {
   // ── Cancel order request ──────────────────────────────────────────────────
   if (m === 'cancel order') {
     const activeOrder = await db.order.findFirst({
-      where: {
-        customerPhone,
-        status: { in: ['PENDING', 'ACCEPTED', 'PAID'] },
-      },
+      where: { tenantId: tenant.id, customerPhone, status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
       orderBy: { createdAt: 'desc' },
     })
 
     if (!activeOrder) {
       const reply = messages['cancel_no_order'] ?? "No active order found to cancel. Type *hi* to start a new order."
-      await db.message.create({ data: { customerPhone, body: reply, direction: 'OUT' } })
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
       await sendWhatsApp(customerPhone, reply)
       return new NextResponse('', { status: 200 })
     }
@@ -439,27 +429,23 @@ export async function POST(req: NextRequest) {
     let reply: string
 
     if (activeOrder.status === 'PENDING') {
-      // Cancel immediately
       await db.order.update({ where: { id: activeOrder.id }, data: { status: 'REJECTED' } })
       reply = messages['cancel_confirmed'] ?? `✅ Order #${shortId} has been cancelled. Type *hi* to start a new order.`
     } else {
-      // ACCEPTED or PAID — notify baker, can't auto-cancel
-      if (config) {
-        await sendWhatsApp(
-          config.bakerPhone,
-          `⚠️ *Cancellation Request*\n\nCustomer ${customerPhone} wants to cancel order *#${shortId}*.\n\nReply REJECT ${shortId} if you accept the cancellation.`
-        )
-      }
-      reply = messages['cancel_request_sent'] ?? `Your cancellation request for order *#${shortId}* has been sent to the baker. We'll confirm shortly.`
+      // ACCEPTED or PAID — notify owner, can't auto-cancel
+      await sendWhatsApp(
+        tenant.ownerPhone,
+        `⚠️ *Cancellation Request*\n\nCustomer ${customerPhone} wants to cancel order *#${shortId}*.\n\nReply *2* from the order detail to reject it.`
+      )
+      reply = messages['cancel_request_sent'] ?? `Your cancellation request for order *#${shortId}* has been sent. We'll confirm shortly.`
     }
 
-    await db.message.create({ data: { customerPhone, body: reply, direction: 'OUT' } })
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply)
     return new NextResponse('', { status: 200 })
   }
 
-  // ── AI intent parser (natural language → fast-track to confirmation) ────────
-  // Only runs when customer is idle/starting fresh and OpenRouter is configured
+  // ── AI intent parser (natural language → fast-track to confirmation) ──────
   if (
     process.env.OPENROUTER_API_KEY &&
     (session.state === 'IDLE' || session.state === 'AWAITING_CATEGORY') &&
@@ -520,8 +506,8 @@ Rules:
         }
 
         if (allMatched && cart.length > 0) {
-          const context = { ...(session.context), deliveryNote: parsed.deliveryNote ?? undefined }
-          await saveSession(customerPhone, 'AWAITING_DELIVERY_DATE', cart, context)
+          const ctx = { ...(session.context), deliveryNote: parsed.deliveryNote ?? undefined }
+          await saveSession(customerPhone, 'AWAITING_DELIVERY_DATE', cart, ctx, tenant.id)
 
           const cartLines = cart.map(i => `• ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity} = ₹${((i.price * i.quantity) / 100).toFixed(0)}`).join('\n')
           const total = cart.reduce((s, i) => s + i.price * i.quantity, 0)
@@ -529,7 +515,7 @@ Rules:
             ? `Got it! Here's what I have:\n\n${cartLines}\n\n*Total: ₹${(total / 100).toFixed(0)}*\n\n📅 Delivery: ${parsed.deliveryNote}\n\nWhen exactly would you like it? (or confirm the time if that's right)`
             : `Got it! Here's what I have:\n\n${cartLines}\n\n*Total: ₹${(total / 100).toFixed(0)}*\n\n📅 When would you like your order? (e.g. *Tomorrow 3pm*, *Friday evening*, *ASAP*)`
 
-          await db.message.create({ data: { customerPhone, body: reply, direction: 'OUT' } })
+          await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
           await sendWhatsApp(customerPhone, reply)
           return new NextResponse('', { status: 200 })
         }
@@ -549,7 +535,7 @@ Rules:
     menuItems,
     messages,
     rules,
-    minOrderAmount: config?.minOrderAmount ?? 0,
+    minOrderAmount: tenant.minOrderAmount,
     discountCodes,
   })
 
@@ -572,7 +558,7 @@ Rules:
               {
                 role: 'system',
                 content:
-                  "You are an assistant for a bakery. Reformat the customer's custom order request into a clear, structured summary for the baker. Keep all details. Use bullet points. Be concise. No extra commentary.",
+                  `You are an assistant for ${tenant.businessName}. Reformat the customer's custom order request into a clear, structured summary for the owner. Keep all details. Use bullet points. Be concise. No extra commentary.`,
               },
               { role: 'user', content: customDescription },
             ],
@@ -587,7 +573,7 @@ Rules:
     }
 
     const prevOrder = await db.order.findFirst({
-      where: { customerPhone },
+      where: { tenantId: tenant.id, customerPhone },
       orderBy: { createdAt: 'desc' },
     })
 
@@ -597,6 +583,7 @@ Rules:
     if (isCustom && finalDescription) {
       order = await db.order.create({
         data: {
+          tenantId: tenant.id,
           customerPhone,
           customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
           totalAmount: 0,
@@ -608,16 +595,14 @@ Rules:
           },
         },
       })
-      if (config) {
-        await notifyBaker(
-          order.id,
-          [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1 }],
-          0,
-          customerPhone,
-          config.bakerPhone,
-          paymentMethod
-        )
-      }
+      await notifyBaker(
+        order.id,
+        [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1 }],
+        0,
+        customerPhone,
+        tenant.ownerPhone,
+        paymentMethod
+      )
     } else if (output.cart.length > 0) {
       const cartTotal = output.cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
       const discountAmount = output.context.appliedDiscount ?? 0
@@ -625,6 +610,7 @@ Rules:
 
       order = await db.order.create({
         data: {
+          tenantId: tenant.id,
           customerPhone,
           customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
           totalAmount,
@@ -646,22 +632,20 @@ Rules:
 
       if (output.context.appliedCode) {
         await db.discountCode.updateMany({
-          where: { code: output.context.appliedCode },
+          where: { tenantId: tenant.id, code: output.context.appliedCode },
           data: { usedCount: { increment: 1 } },
         })
       }
 
-      if (config) {
-        await notifyBaker(order.id, output.cart, totalAmount, customerPhone, config.bakerPhone, paymentMethod)
-      }
+      await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, paymentMethod)
     }
 
-    await resetSession(customerPhone)
+    await resetSession(customerPhone, tenant.id)
   } else {
-    await saveSession(customerPhone, output.nextState, output.cart, output.context)
+    await saveSession(customerPhone, output.nextState, output.cart, output.context, tenant.id)
   }
 
-  await db.message.create({ data: { customerPhone, body: output.reply, direction: 'OUT' } })
+  await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: output.reply, direction: 'OUT' } })
   await sendWhatsApp(customerPhone, output.reply)
 
   return new NextResponse('', { status: 200 })

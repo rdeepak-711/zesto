@@ -1,10 +1,15 @@
 import { db } from '@/lib/db'
+import { getAuthFromCookies } from '@/lib/auth'
+import { redirect } from 'next/navigation'
 import BotGraph from './BotGraph'
 
 export default async function BotPage() {
+  const auth = await getAuthFromCookies()
+  if (!auth) redirect('/login')
+
   const [messages, rules] = await Promise.all([
-    db.botMessage.findMany({ orderBy: { key: 'asc' } }),
-    db.botRule.findMany({ orderBy: { sortOrder: 'asc' } }),
+    db.botMessage.findMany({ where: { tenantId: auth.tenantId }, orderBy: { key: 'asc' } }),
+    db.botRule.findMany({ where: { tenantId: auth.tenantId }, orderBy: { sortOrder: 'asc' } }),
   ])
 
   return (

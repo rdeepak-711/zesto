@@ -33,7 +33,6 @@ function buildNudge(state: string, cart: { name: string; quantity: number; price
 }
 
 export async function GET(req: NextRequest) {
-  // Vercel cron requests include this header
   const authHeader = req.headers.get('authorization')
   if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
@@ -55,7 +54,6 @@ export async function GET(req: NextRequest) {
   for (const session of staleSessions) {
     const context = JSON.parse(session.contextJson || '{}')
 
-    // Skip if already nudged this session
     if (context.nudgedAt) {
       skipped++
       continue
@@ -67,9 +65,8 @@ export async function GET(req: NextRequest) {
     try {
       await sendWhatsApp(session.customerPhone, message)
 
-      // Mark nudged so we don't send again
       await db.botSession.update({
-        where: { customerPhone: session.customerPhone },
+        where: { id: session.id },
         data: { contextJson: JSON.stringify({ ...context, nudgedAt: new Date().toISOString() }) },
       })
 
