@@ -16,6 +16,7 @@ type MenuItem = {
 type Category = {
   id: string
   name: string
+  isCustom: boolean
   items: MenuItem[]
 }
 
@@ -25,12 +26,67 @@ function formatPrice(paise: number) {
 
 const inputCls = 'w-full text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400'
 
-export default function MenuManager({ categories }: { categories: Category[] }) {
+const SENTINEL_CAT = 'cat-custom'
+
+export default function MenuManager({ categories: initial }: { categories: Category[] }) {
   const router = useRouter()
+  const [categories, setCategories] = useState(initial)
+
+  // Item state
   const [editing, setEditing] = useState<string | null>(null)
   const [editData, setEditData] = useState<Partial<MenuItem>>({})
   const [adding, setAdding] = useState<string | null>(null)
   const [newItem, setNewItem] = useState({ name: '', price: '', description: '', imageUrl: '', productUrl: '' })
+
+  // Category state
+  const [addingCat, setAddingCat] = useState(false)
+  const [newCatName, setNewCatName] = useState('')
+  const [newCatCustom, setNewCatCustom] = useState(false)
+  const [editingCat, setEditingCat] = useState<string | null>(null)
+  const [editCatName, setEditCatName] = useState('')
+
+  // ── Category CRUD ────────────────────────────────────────────────────────────
+
+  async function addCategory() {
+    if (!newCatName.trim()) return
+    const res = await fetch('/api/menu/categories', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newCatName.trim(), isCustom: newCatCustom }),
+    })
+    const cat = await res.json()
+    setCategories((prev) => [...prev, { ...cat, items: [] }])
+    setAddingCat(false)
+    setNewCatName('')
+    setNewCatCustom(false)
+    router.refresh()
+  }
+
+  async function renameCategory(id: string) {
+    if (!editCatName.trim()) return
+    await fetch(`/api/menu/categories/${id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: editCatName.trim() }),
+    })
+    setCategories((prev) => prev.map((c) => c.id === id ? { ...c, name: editCatName.trim() } : c))
+    setEditingCat(null)
+    router.refresh()
+  }
+
+  async function deleteCategory(id: string) {
+    const cat = categories.find((c) => c.id === id)
+    if (cat && cat.items.length > 0) {
+      alert('Remove all items in this category first.')
+      return
+    }
+    if (!confirm(`Delete category "${cat?.name}"?`)) return
+    await fetch(`/api/menu/categories/${id}`, { method: 'DELETE' })
+    setCategories((prev) => prev.filter((c) => c.id !== id))
+    router.refresh()
+  }
+
+  // ── Item CRUD ────────────────────────────────────────────────────────────────
 
   async function toggleAvailability(item: MenuItem) {
     await fetch(`/api/menu/items/${item.id}`, {
@@ -78,174 +134,196 @@ export default function MenuManager({ categories }: { categories: Category[] }) 
     router.refresh()
   }
 
+  const visible = categories.filter((c) => c.id !== SENTINEL_CAT)
+
   return (
     <div className="space-y-6">
-      {categories.map((cat) => (
+      {visible.map((cat) => (
         <div key={cat.id} className="bg-white rounded-xl border border-gray-200 overflow-hidden">
-          <div className="px-5 py-3 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-gray-700">{cat.name}</h2>
-            <button
-              onClick={() => { setAdding(cat.id); setNewItem({ name: '', price: '', description: '', imageUrl: '', productUrl: '' }) }}
-              className="text-xs text-orange-500 hover:text-orange-700 font-medium"
-            >
-              + Add item
-            </button>
-          </div>
-
-          <div className="divide-y divide-gray-50">
-            {cat.items.map((item) => (
-              <div key={item.id} className="px-5 py-3">
-                {editing === item.id ? (
-                  <div className="space-y-2">
-                    <input
-                      className={inputCls}
-                      placeholder="Item name"
-                      defaultValue={item.name}
-                      onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))}
-                    />
-                    <input
-                      type="number"
-                      step="0.01"
-                      className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                      placeholder="Price (₹)"
-                      defaultValue={(item.price / 100).toFixed(2)}
-                      onChange={(e) => setEditData((d) => ({ ...d, price: e.target.value as unknown as number }))}
-                    />
-                    <textarea
-                      className={inputCls + ' resize-none'}
-                      rows={2}
-                      placeholder="Description (optional)"
-                      defaultValue={item.description ?? ''}
-                      onChange={(e) => setEditData((d) => ({ ...d, description: e.target.value || null }))}
-                    />
-                    <input
-                      className={inputCls}
-                      placeholder="Image URL (optional)"
-                      defaultValue={item.imageUrl ?? ''}
-                      onChange={(e) => setEditData((d) => ({ ...d, imageUrl: e.target.value || null }))}
-                    />
-                    <input
-                      className={inputCls}
-                      placeholder="Product URL (optional — shown in chat)"
-                      defaultValue={item.productUrl ?? ''}
-                      onChange={(e) => setEditData((d) => ({ ...d, productUrl: e.target.value || null }))}
-                    />
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => saveEdit(item.id)}
-                        className="text-xs bg-orange-500 text-white rounded-lg px-3 py-1.5 hover:bg-orange-600"
-                      >
-                        Save
-                      </button>
-                      <button
-                        onClick={() => setEditing(null)}
-                        className="text-xs text-gray-500 hover:text-gray-700"
-                      >
-                        Cancel
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="flex items-start gap-3 min-w-0">
-                      {item.imageUrl && (
-                        <img
-                          src={item.imageUrl}
-                          alt={item.name}
-                          className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-100"
-                        />
-                      )}
-                      <div className="min-w-0">
-                        <div className="flex items-baseline gap-2">
-                          <span className={`text-sm font-medium ${item.available ? 'text-gray-900' : 'text-gray-400 line-through'}`}>
-                            {item.name}
-                          </span>
-                          <span className="text-sm text-gray-500">{formatPrice(item.price)}</span>
-                        </div>
-                        {item.description && (
-                          <p className="text-xs text-gray-400 mt-0.5 truncate">{item.description}</p>
-                        )}
-                      </div>
-                    </div>
-                    <div className="flex items-center gap-3 flex-shrink-0">
-                      <button
-                        onClick={() => toggleAvailability(item)}
-                        className={`text-xs font-medium ${item.available ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}
-                      >
-                        {item.available ? 'Available' : 'Hidden'}
-                      </button>
-                      <button
-                        onClick={() => { setEditing(item.id); setEditData({}) }}
-                        className="text-xs text-blue-500 hover:text-blue-700"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => deleteItem(item.id)}
-                        className="text-xs text-red-400 hover:text-red-600"
-                      >
-                        Delete
-                      </button>
-                    </div>
-                  </div>
+          {/* Category header */}
+          <div className={`px-5 py-3 border-b border-gray-100 flex items-center justify-between ${cat.isCustom ? 'bg-purple-50' : 'bg-gray-50'}`}>
+            {editingCat === cat.id ? (
+              <div className="flex items-center gap-2 flex-1">
+                <input
+                  className="text-sm font-semibold border border-gray-300 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                  value={editCatName}
+                  onChange={(e) => setEditCatName(e.target.value)}
+                  onKeyDown={(e) => e.key === 'Enter' && renameCategory(cat.id)}
+                  autoFocus
+                />
+                <button onClick={() => renameCategory(cat.id)} className="text-xs text-orange-500 font-medium">Save</button>
+                <button onClick={() => setEditingCat(null)} className="text-xs text-gray-400">Cancel</button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-gray-700">{cat.name}</h2>
+                {cat.isCustom && (
+                  <span className="text-[10px] font-semibold bg-purple-100 text-purple-700 border border-purple-200 px-1.5 py-0.5 rounded-full">
+                    ✏️ Custom
+                  </span>
                 )}
               </div>
-            ))}
-
-            {adding === cat.id && (
-              <div className="px-5 py-3 bg-orange-50 space-y-2">
-                <input
-                  className={inputCls}
-                  placeholder="Item name *"
-                  value={newItem.name}
-                  onChange={(e) => setNewItem((n) => ({ ...n, name: e.target.value }))}
-                />
-                <input
-                  type="number"
-                  step="0.01"
-                  className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
-                  placeholder="Price (₹) *"
-                  value={newItem.price}
-                  onChange={(e) => setNewItem((n) => ({ ...n, price: e.target.value }))}
-                />
-                <textarea
-                  className={inputCls + ' resize-none'}
-                  rows={2}
-                  placeholder="Description (optional)"
-                  value={newItem.description}
-                  onChange={(e) => setNewItem((n) => ({ ...n, description: e.target.value }))}
-                />
-                <input
-                  className={inputCls}
-                  placeholder="Image URL (optional)"
-                  value={newItem.imageUrl}
-                  onChange={(e) => setNewItem((n) => ({ ...n, imageUrl: e.target.value }))}
-                />
-                <input
-                  className={inputCls}
-                  placeholder="Product URL (optional — shown in chat)"
-                  value={newItem.productUrl}
-                  onChange={(e) => setNewItem((n) => ({ ...n, productUrl: e.target.value }))}
-                />
-                <div className="flex gap-2">
-                  <button
-                    onClick={() => addItem(cat.id)}
-                    className="text-xs bg-orange-500 text-white rounded-lg px-3 py-1.5 hover:bg-orange-600"
-                  >
-                    Add
-                  </button>
-                  <button
-                    onClick={() => setAdding(null)}
-                    className="text-xs text-gray-500 hover:text-gray-700"
-                  >
-                    Cancel
-                  </button>
-                </div>
-              </div>
             )}
+            <div className="flex items-center gap-3">
+              {!cat.isCustom && (
+                <button
+                  onClick={() => { setAdding(cat.id); setNewItem({ name: '', price: '', description: '', imageUrl: '', productUrl: '' }) }}
+                  className="text-xs text-orange-500 hover:text-orange-700 font-medium"
+                >
+                  + Add item
+                </button>
+              )}
+              <button
+                onClick={() => { setEditingCat(cat.id); setEditCatName(cat.name) }}
+                className="text-xs text-gray-400 hover:text-gray-600"
+              >
+                Rename
+              </button>
+              <button
+                onClick={() => deleteCategory(cat.id)}
+                className="text-xs text-red-400 hover:text-red-600"
+              >
+                Delete
+              </button>
+            </div>
           </div>
+
+          {/* Custom category — no items, just description */}
+          {cat.isCustom ? (
+            <div className="px-5 py-4">
+              <p className="text-sm text-gray-500">
+                When customers select this category, the bot asks them to describe their custom order in free text.
+                The request is sent directly to the baker. Price is confirmed manually.
+              </p>
+              <p className="text-xs text-purple-600 mt-2 font-medium">
+                Edit the prompt message in Dashboard → Bot Script → custom_prompt
+              </p>
+            </div>
+          ) : (
+            <div className="divide-y divide-gray-50">
+              {cat.items.map((item) => (
+                <div key={item.id} className="px-5 py-3">
+                  {editing === item.id ? (
+                    <div className="space-y-2">
+                      <input
+                        className={inputCls}
+                        placeholder="Item name"
+                        defaultValue={item.name}
+                        onChange={(e) => setEditData((d) => ({ ...d, name: e.target.value }))}
+                      />
+                      <input
+                        type="number"
+                        step="0.01"
+                        className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400"
+                        placeholder="Price (₹)"
+                        defaultValue={(item.price / 100).toFixed(2)}
+                        onChange={(e) => setEditData((d) => ({ ...d, price: e.target.value as unknown as number }))}
+                      />
+                      <textarea
+                        className={inputCls + ' resize-none'}
+                        rows={2}
+                        placeholder="Description (optional)"
+                        defaultValue={item.description ?? ''}
+                        onChange={(e) => setEditData((d) => ({ ...d, description: e.target.value || null }))}
+                      />
+                      <input
+                        className={inputCls}
+                        placeholder="Image URL (optional)"
+                        defaultValue={item.imageUrl ?? ''}
+                        onChange={(e) => setEditData((d) => ({ ...d, imageUrl: e.target.value || null }))}
+                      />
+                      <input
+                        className={inputCls}
+                        placeholder="Product URL (optional — shown in chat)"
+                        defaultValue={item.productUrl ?? ''}
+                        onChange={(e) => setEditData((d) => ({ ...d, productUrl: e.target.value || null }))}
+                      />
+                      <div className="flex gap-2">
+                        <button onClick={() => saveEdit(item.id)} className="text-xs bg-orange-500 text-white rounded-lg px-3 py-1.5 hover:bg-orange-600">Save</button>
+                        <button onClick={() => setEditing(null)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex items-start gap-3 min-w-0">
+                        {item.imageUrl && (
+                          <img src={item.imageUrl} alt={item.name} className="w-12 h-12 rounded-lg object-cover flex-shrink-0 border border-gray-100" />
+                        )}
+                        <div className="min-w-0">
+                          <div className="flex items-baseline gap-2">
+                            <span className={`text-sm font-medium ${item.available ? 'text-gray-900' : 'text-gray-400 line-through'}`}>{item.name}</span>
+                            <span className="text-sm text-gray-500">{formatPrice(item.price)}</span>
+                          </div>
+                          {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate">{item.description}</p>}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3 flex-shrink-0">
+                        <button onClick={() => toggleAvailability(item)} className={`text-xs font-medium ${item.available ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}>
+                          {item.available ? 'Available' : 'Hidden'}
+                        </button>
+                        <button onClick={() => { setEditing(item.id); setEditData({}) }} className="text-xs text-blue-500 hover:text-blue-700">Edit</button>
+                        <button onClick={() => deleteItem(item.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+
+              {adding === cat.id && (
+                <div className="px-5 py-3 bg-orange-50 space-y-2">
+                  <input className={inputCls} placeholder="Item name *" value={newItem.name} onChange={(e) => setNewItem((n) => ({ ...n, name: e.target.value }))} />
+                  <input type="number" step="0.01" className="w-32 text-sm border border-gray-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-orange-400" placeholder="Price (₹) *" value={newItem.price} onChange={(e) => setNewItem((n) => ({ ...n, price: e.target.value }))} />
+                  <textarea className={inputCls + ' resize-none'} rows={2} placeholder="Description (optional)" value={newItem.description} onChange={(e) => setNewItem((n) => ({ ...n, description: e.target.value }))} />
+                  <input className={inputCls} placeholder="Image URL (optional)" value={newItem.imageUrl} onChange={(e) => setNewItem((n) => ({ ...n, imageUrl: e.target.value }))} />
+                  <input className={inputCls} placeholder="Product URL (optional — shown in chat)" value={newItem.productUrl} onChange={(e) => setNewItem((n) => ({ ...n, productUrl: e.target.value }))} />
+                  <div className="flex gap-2">
+                    <button onClick={() => addItem(cat.id)} className="text-xs bg-orange-500 text-white rounded-lg px-3 py-1.5 hover:bg-orange-600">Add</button>
+                    <button onClick={() => setAdding(null)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
       ))}
+
+      {/* Add Category */}
+      {addingCat ? (
+        <div className="bg-white rounded-xl border border-dashed border-orange-300 px-5 py-4 space-y-3">
+          <p className="text-sm font-semibold text-gray-700">New Category</p>
+          <input
+            className={inputCls}
+            placeholder="Category name *"
+            value={newCatName}
+            onChange={(e) => setNewCatName(e.target.value)}
+            onKeyDown={(e) => e.key === 'Enter' && addCategory()}
+            autoFocus
+          />
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input
+              type="checkbox"
+              checked={newCatCustom}
+              onChange={(e) => setNewCatCustom(e.target.checked)}
+              className="rounded border-gray-300 text-orange-500 focus:ring-orange-400"
+            />
+            <span className="text-sm text-gray-600">
+              Custom order category{' '}
+              <span className="text-xs text-gray-400">(customers describe what they want in free text)</span>
+            </span>
+          </label>
+          <div className="flex gap-2">
+            <button onClick={addCategory} className="text-sm bg-orange-500 text-white rounded-lg px-4 py-1.5 hover:bg-orange-600 font-medium">Add Category</button>
+            <button onClick={() => { setAddingCat(false); setNewCatName(''); setNewCatCustom(false) }} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-1.5">Cancel</button>
+          </div>
+        </div>
+      ) : (
+        <button
+          onClick={() => setAddingCat(true)}
+          className="w-full bg-white rounded-xl border border-dashed border-gray-300 px-5 py-3 text-sm text-gray-400 hover:text-gray-600 hover:border-gray-400 transition-colors"
+        >
+          + Add Category
+        </button>
+      )}
     </div>
   )
 }

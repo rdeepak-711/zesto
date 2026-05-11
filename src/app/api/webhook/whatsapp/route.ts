@@ -72,7 +72,7 @@ export async function POST(req: NextRequest) {
   // Customer message — run bot FSM
   const [session, categories, menuItems, botMessageRows, rules] = await Promise.all([
     getSession(customerPhone),
-    db.menuCategory.findMany({ where: { active: true } }),
+    db.menuCategory.findMany({ where: { active: true }, select: { id: true, name: true, sortOrder: true, isCustom: true } }),
     db.menuItem.findMany({ where: { available: true } }),
     db.botMessage.findMany(),
     db.botRule.findMany({ where: { active: true }, orderBy: { sortOrder: 'asc' } }),
@@ -93,32 +93,85 @@ export async function POST(req: NextRequest) {
     rules,
   })
 
-  if (output.placeOrder && output.cart.length > 0) {
-    const totalAmount = output.cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
+  if (output.placeOrder) {
+    const isCustom = !!output.context.customDescription
+    const customDescription = output.context.customDescription
+
+    // Optionally rephrase with AI if key present
+    let finalDescription = customDescription
+    if (isCustom && process.env.OPENROUTER_API_KEY && customDescription) {
+      try {
+        const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${process.env.OPENROUTER_API_KEY}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            model: 'google/gemini-2.0-flash-lite',
+            messages: [
+              {
+                role: 'system',
+                content: 'You are an assistant for a bakery. Reformat the customer\'s custom order request into a clear, structured summary for the baker. Keep all details. Use bullet points. Be concise. No extra commentary.',
+              },
+              { role: 'user', content: customDescription },
+            ],
+            max_tokens: 300,
+          }),
+        })
+        const aiJson = await aiRes.json()
+        finalDescription = aiJson.choices?.[0]?.message?.content ?? customDescription
+      } catch {
+        // AI failed — use raw description
+      }
+    }
 
     const prevOrder = await db.order.findFirst({
       where: { customerPhone },
       orderBy: { createdAt: 'desc' },
     })
 
-    const order = await db.order.create({
-      data: {
-        customerPhone,
-        customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
-        totalAmount,
-        items: {
-          create: output.cart.map((item) => ({
-            menuItemId: item.menuItemId,
-            name: item.name,
-            price: item.price,
-            quantity: item.quantity,
-          })),
+    let order
+    if (isCustom && finalDescription) {
+      order = await db.order.create({
+        data: {
+          customerPhone,
+          customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
+          totalAmount: 0,
+          notes: finalDescription,
+          items: {
+            create: [{
+              menuItemId: 'item-custom',
+              name: 'Custom Order',
+              price: 0,
+              quantity: 1,
+            }],
+          },
         },
-      },
-    })
-
-    if (config) {
-      await notifyBaker(order.id, output.cart, totalAmount, customerPhone, config.bakerPhone)
+      })
+      if (config) {
+        await notifyBaker(order.id, [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1 }], 0, customerPhone, config.bakerPhone)
+      }
+    } else if (output.cart.length > 0) {
+      const totalAmount = output.cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
+      order = await db.order.create({
+        data: {
+          customerPhone,
+          customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
+          totalAmount,
+          items: {
+            create: output.cart.map((item) => ({
+              menuItemId: item.menuItemId,
+              name: item.name,
+              price: item.price,
+              quantity: item.quantity,
+            })),
+          },
+        },
+      })
+      if (config) {
+        await notifyBaker(order.id, output.cart, totalAmount, customerPhone, config.bakerPhone)
+      }
     }
 
     await resetSession(customerPhone)

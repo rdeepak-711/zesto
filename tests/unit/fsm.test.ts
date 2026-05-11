@@ -2,8 +2,8 @@ import { describe, it, expect } from 'vitest'
 import { processMessage, type BotInput } from '@/lib/bot/fsm'
 
 const categories = [
-  { id: 'cat-cakes', name: 'Cakes', sortOrder: 1 },
-  { id: 'cat-pastries', name: 'Pastries', sortOrder: 2 },
+  { id: 'cat-cakes', name: 'Cakes', sortOrder: 1, isCustom: false },
+  { id: 'cat-pastries', name: 'Pastries', sortOrder: 2, isCustom: false },
 ]
 
 const menuItems = [

@@ -19,6 +19,18 @@ async function main() {
     },
   })
 
+  // Sentinel category + item for custom orders — never shown to customers
+  const customCat = await db.menuCategory.upsert({
+    where: { id: 'cat-custom' },
+    update: {},
+    create: { id: 'cat-custom', name: 'Custom', sortOrder: 99, isCustom: true, active: false },
+  })
+  await db.menuItem.upsert({
+    where: { id: 'item-custom' },
+    update: {},
+    create: { id: 'item-custom', categoryId: customCat.id, name: 'Custom Order', price: 0, sortOrder: 0, available: false },
+  })
+
   const cakes = await db.menuCategory.upsert({
     where: { id: 'cat-cakes' },
     update: {},
@@ -75,6 +87,10 @@ async function main() {
     { key: 'confirm_hint', label: 'Confirm or cancel hint', value: 'Type *confirm* to place order or *cancel* to start over.' },
     { key: 'await_confirm', label: 'Awaiting yes/no confirm', value: 'Reply *yes* to confirm your order or *cancel* to start over.' },
     { key: 'back_to_categories', label: 'Back to categories', value: 'Choose a category:\n\n{categories}\n\nReply with a number.' },
+    { key: 'custom_prompt', label: 'Custom order — describe prompt', value: "✏️ Tell us exactly what you'd like — flavor, size, quantity, occasion, any special requirements. Be as specific as possible!" },
+    { key: 'custom_confirm', label: 'Custom order — confirm preview', value: "Got it! Here's your custom request:\n\n_{description}_\n\nPrice will be confirmed by the baker.\n\nReply *yes* to send to the baker, or *edit* to retype." },
+    { key: 'custom_too_short', label: 'Custom order — too short', value: 'Please give a bit more detail so the baker knows exactly what to make!' },
+    { key: 'custom_await_confirm', label: 'Custom order — awaiting yes/edit', value: 'Reply *yes* to send to the baker, or *edit* to retype your request.' },
   ]
 
   for (const msg of botMessages) {

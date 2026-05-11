@@ -7,9 +7,11 @@ export type BotState =
   | 'AWAITING_QUANTITY'
   | 'AWAITING_MORE'
   | 'AWAITING_CONFIRMATION'
+  | 'AWAITING_CUSTOM_DESCRIPTION'
+  | 'AWAITING_CUSTOM_CONFIRM'
   | 'ORDER_PENDING'
 
-export type Category = { id: string; name: string; sortOrder: number }
+export type Category = { id: string; name: string; sortOrder: number; isCustom: boolean }
 export type MenuItem = { id: string; name: string; price: number; categoryId: string; description?: string | null; imageUrl?: string | null; productUrl?: string | null }
 
 export type BotMessages = Record<string, string>
@@ -192,6 +194,16 @@ export function processMessage(input: BotInput): BotOutput {
         }
       }
 
+      if (matched.isCustom) {
+        return {
+          reply: messages['custom_prompt'] ?? '✏️ Tell us exactly what you\'d like — flavor, size, quantity, occasion, any special requirements. Be as specific as possible!',
+          nextState: 'AWAITING_CUSTOM_DESCRIPTION',
+          cart,
+          context: { ...context, selectedCategoryId: matched.id },
+          placeOrder: false,
+        }
+      }
+
       const items = menuItems.filter((i) => i.categoryId === matched!.id)
       return {
         reply: formatItems(items, matched.name, messages),
@@ -356,6 +368,55 @@ export function processMessage(input: BotInput): BotOutput {
       return {
         reply: messages['await_confirm'] ?? 'Reply *yes* to confirm your order or *cancel* to start over.',
         nextState: 'AWAITING_CONFIRMATION',
+        cart,
+        context,
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_DESCRIPTION': {
+      const desc = message.trim()
+      if (desc.length < 5) {
+        return {
+          reply: messages['custom_too_short'] ?? 'Please give a bit more detail so the baker knows exactly what to make!',
+          nextState: 'AWAITING_CUSTOM_DESCRIPTION',
+          cart,
+          context,
+          placeOrder: false,
+        }
+      }
+      const summary = msg(messages, 'custom_confirm', { description: desc })
+      return {
+        reply: summary,
+        nextState: 'AWAITING_CUSTOM_CONFIRM',
+        cart,
+        context: { ...context, customDescription: desc },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_CONFIRM': {
+      if (m === 'yes' || m === 'confirm') {
+        return {
+          reply: messages['order_placed'] ?? '🎉 Custom order sent! The baker will review and confirm the price shortly.',
+          nextState: 'ORDER_PENDING',
+          cart,
+          context,
+          placeOrder: true,
+        }
+      }
+      if (m === 'edit' || m === 'no' || m === 'cancel') {
+        return {
+          reply: messages['custom_prompt'] ?? '✏️ Tell us exactly what you\'d like — flavor, size, quantity, occasion, any special requirements.',
+          nextState: 'AWAITING_CUSTOM_DESCRIPTION',
+          cart,
+          context: { ...context, customDescription: undefined },
+          placeOrder: false,
+        }
+      }
+      return {
+        reply: messages['custom_await_confirm'] ?? 'Reply *yes* to send to the baker, or *edit* to retype your request.',
+        nextState: 'AWAITING_CUSTOM_CONFIRM',
         cart,
         context,
         placeOrder: false,

@@ -13,6 +13,7 @@ export type BotContext = {
   selectedItemName?: string
   selectedItemPrice?: number
   customerName?: string
+  customDescription?: string
 }
 
 export type BotSession = {
