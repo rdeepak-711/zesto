@@ -195,9 +195,12 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   <p className="text-sm text-gray-500">Custom order — see request above. Baker sets price on acceptance.</p>
                 ) : (
                   <div className="space-y-3">
-                    {order.items.map((item) => (
-                      <div key={item.id} className="flex items-center justify-between gap-3">
-                        <div className="flex items-center gap-3 min-w-0">
+                    {order.items.map((item) => {
+                      const fields: { name: string; value: string }[] = (() => { try { return JSON.parse(item.fieldsJson || '[]') } catch { return [] } })()
+                      const fieldTags = fields.filter(f => f.value)
+                      return (
+                      <div key={item.id} className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
                           {item.menuItem.imageUrl ? (
                             <img
                               src={item.menuItem.imageUrl}
@@ -211,6 +214,15 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                           )}
                           <div className="min-w-0">
                             <p className="text-sm font-medium text-gray-800 truncate">{item.name}</p>
+                            {fieldTags.length > 0 && (
+                              <div className="flex flex-wrap gap-1 mt-0.5">
+                                {fieldTags.map((f, i) => (
+                                  <span key={i} className="inline-flex items-center px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 border border-blue-100">
+                                    {f.name}: {f.value}
+                                  </span>
+                                ))}
+                              </div>
+                            )}
                             <p className="text-xs text-gray-400">{item.quantity} × {formatPrice(item.price)}</p>
                           </div>
                         </div>
@@ -218,7 +230,8 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                           {formatPrice(item.price * item.quantity)}
                         </span>
                       </div>
-                    ))}
+                      )
+                    })}
                     <div className="border-t border-gray-100 pt-3 mt-1 flex justify-between">
                       <span className="text-sm font-bold text-gray-900">Total</span>
                       <span className="text-base font-extrabold text-gray-900">{formatPrice(order.totalAmount)}</span>
