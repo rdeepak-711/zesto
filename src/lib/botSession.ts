@@ -65,12 +65,18 @@ export async function getSession(customerPhone: string, tenantId: string): Promi
     fields: Array.isArray(i.fields) ? i.fields as FieldSelection[] : [],
   }))
 
+  const rawContext = JSON.parse(row.contextJson || '{}') as Record<string, unknown>
+  // Strip legacy variant fields from old sessions
+  delete rawContext.selectedVariantName
+  delete rawContext.selectedVariantDelta
+  const context = rawContext as BotContext
+
   return {
     id: row.id,
     customerPhone: row.customerPhone,
     state: row.state,
     cart,
-    context: JSON.parse(row.contextJson || '{}') as BotContext,
+    context,
   }
 }
 

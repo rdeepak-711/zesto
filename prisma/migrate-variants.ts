@@ -43,39 +43,45 @@ async function main() {
     }
 
     for (const [, { categoryId, tenantId, variants: catVariants }] of categoryMap) {
-      // Create or find the "Size" CategoryField for this category
-      let field = await db.categoryField.findFirst({ where: { categoryId, name: 'Size' } })
-      if (!field) {
-        field = await db.categoryField.create({
-          data: { tenantId, categoryId, name: 'Size', type: 'select', required: true, sortOrder: 0 },
-        })
-      }
-
-      // Deduplicate options by name, create CategoryFieldOption for each
-      const optionByName = new Map<string, { id: string; priceDelta: number }>()
-      const sorted = [...catVariants].sort((a, b) => a.sort_order - b.sort_order)
-      for (const v of sorted) {
-        if (optionByName.has(v.name)) continue
-        const existing = await db.categoryFieldOption.findFirst({ where: { fieldId: field.id, label: v.name } })
-        if (existing) {
-          optionByName.set(v.name, { id: existing.id, priceDelta: existing.priceDelta })
-        } else {
-          const opt = await db.categoryFieldOption.create({
-            data: { fieldId: field.id, label: v.name, priceDelta: v.price_delta, sortOrder: v.sort_order },
+      try {
+        // Create or find the "Size" CategoryField for this category
+        let field = await db.categoryField.findFirst({ where: { categoryId, name: 'Size' } })
+        if (!field) {
+          field = await db.categoryField.create({
+            data: { tenantId, categoryId, name: 'Size', type: 'select', required: true, sortOrder: 0 },
           })
-          optionByName.set(v.name, { id: opt.id, priceDelta: v.price_delta })
         }
-      }
 
-      // Create ItemFieldOption rows for each item→option mapping
-      for (const v of catVariants) {
-        const opt = optionByName.get(v.name)
-        if (!opt) continue
-        await db.itemFieldOption.upsert({
-          where: { menuItemId_optionId: { menuItemId: v.menu_item_id, optionId: opt.id } },
-          update: {},
-          create: { menuItemId: v.menu_item_id, fieldId: field.id, optionId: opt.id },
-        })
+        // Deduplicate options by name, create CategoryFieldOption for each
+        const optionByName = new Map<string, { id: string; priceDelta: number }>()
+        const sorted = [...catVariants].sort((a, b) => Number(a.sort_order) - Number(b.sort_order))
+        for (const v of sorted) {
+          if (optionByName.has(v.name)) continue
+          const existing = await db.categoryFieldOption.findFirst({ where: { fieldId: field.id, label: v.name } })
+          if (existing) {
+            optionByName.set(v.name, { id: existing.id, priceDelta: existing.priceDelta })
+          } else {
+            const opt = await db.categoryFieldOption.create({
+              data: { fieldId: field.id, label: v.name, priceDelta: Number(v.price_delta), sortOrder: Number(v.sort_order) },
+            })
+            optionByName.set(v.name, { id: opt.id, priceDelta: Number(v.price_delta) })
+          }
+        }
+
+        // Create ItemFieldOption rows for each item→option mapping
+        for (const v of catVariants) {
+          const opt = optionByName.get(v.name)
+          if (!opt) continue
+          await db.itemFieldOption.upsert({
+            where: { menuItemId_optionId: { menuItemId: v.menu_item_id, optionId: opt.id } },
+            update: {},
+            create: { menuItemId: v.menu_item_id, fieldId: field.id, optionId: opt.id },
+          })
+        }
+
+        console.log(`  ✓ Category ${categoryId}: ${catVariants.length} variants processed`)
+      } catch (e) {
+        console.error(`  ✗ Category ${categoryId} failed:`, e)
       }
     }
     console.log(`Migrated variants for ${categoryMap.size} categories.`)
