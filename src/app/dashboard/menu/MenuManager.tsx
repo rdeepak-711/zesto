@@ -136,13 +136,6 @@ function CategoryFieldBuilder({ categoryId }: { categoryId: string }) {
   )
 }
 
-type MenuItemVariant = {
-  id: string
-  name: string
-  priceDelta: number
-  sortOrder: number
-}
-
 type MenuItem = {
   id: string
   name: string
@@ -151,7 +144,6 @@ type MenuItem = {
   imageUrl: string | null
   productUrl?: string | null
   available: boolean
-  variants: MenuItemVariant[]
 }
 
 type Category = {
@@ -178,48 +170,6 @@ export default function MenuManager({ categories: initial }: { categories: Categ
   const [editData, setEditData] = useState<Partial<MenuItem>>({})
   const [adding, setAdding] = useState<string | null>(null)
   const [newItem, setNewItem] = useState({ name: '', price: '', description: '', imageUrl: '', productUrl: '' })
-
-  // Variant state
-  const [expandedVariants, setExpandedVariants] = useState<string | null>(null)
-  const [newVariant, setNewVariant] = useState({ name: '', priceDelta: '' })
-  const [variantSaving, setVariantSaving] = useState(false)
-
-  async function addVariant(itemId: string) {
-    if (!newVariant.name.trim()) return
-    setVariantSaving(true)
-    const res = await fetch(`/api/menu/items/${itemId}/variants`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        name: newVariant.name.trim(),
-        priceDelta: Math.round(Number(newVariant.priceDelta || 0) * 100),
-      }),
-    })
-    const variant = await res.json()
-    setCategories((prev) =>
-      prev.map((c) => ({
-        ...c,
-        items: c.items.map((i) =>
-          i.id === itemId ? { ...i, variants: [...i.variants, variant] } : i
-        ),
-      }))
-    )
-    setNewVariant({ name: '', priceDelta: '' })
-    setVariantSaving(false)
-  }
-
-  async function deleteVariant(itemId: string, variantId: string) {
-    if (!confirm('Delete this variant?')) return
-    await fetch(`/api/menu/items/${itemId}/variants/${variantId}`, { method: 'DELETE' })
-    setCategories((prev) =>
-      prev.map((c) => ({
-        ...c,
-        items: c.items.map((i) =>
-          i.id === itemId ? { ...i, variants: i.variants.filter((v) => v.id !== variantId) } : i
-        ),
-      }))
-    )
-  }
 
   // Category field builder state
   const [expandedFields, setExpandedFields] = useState<string | null>(null)
@@ -449,12 +399,7 @@ export default function MenuManager({ categories: initial }: { categories: Categ
                             <div className="flex items-baseline gap-2 flex-wrap">
                               <span className={`text-sm font-medium ${item.available ? 'text-gray-900' : 'text-gray-400 line-through'}`}>{item.name}</span>
                               <span className="text-sm text-gray-500">{formatPrice(item.price)}</span>
-                              {item.variants.length > 0 && (
-                                <span className="text-[10px] bg-blue-50 text-blue-600 border border-blue-100 px-1.5 py-0.5 rounded-full font-semibold">
-                                  {item.variants.length} variant{item.variants.length > 1 ? 's' : ''}
-                                </span>
-                              )}
-                            </div>
+                              </div>
                             {item.description && <p className="text-xs text-gray-400 mt-0.5 truncate">{item.description}</p>}
                           </div>
                         </div>
@@ -462,75 +407,11 @@ export default function MenuManager({ categories: initial }: { categories: Categ
                           <button onClick={() => toggleAvailability(item)} className={`text-xs font-medium ${item.available ? 'text-green-600 hover:text-green-800' : 'text-gray-400 hover:text-gray-600'}`}>
                             {item.available ? 'Available' : 'Hidden'}
                           </button>
-                          <button
-                            onClick={() => {
-                              setExpandedVariants(expandedVariants === item.id ? null : item.id)
-                              setNewVariant({ name: '', priceDelta: '' })
-                            }}
-                            className="text-xs text-purple-500 hover:text-purple-700"
-                          >
-                            Variants
-                          </button>
                           <button onClick={() => { setEditing(item.id); setEditData({}) }} className="text-xs text-blue-500 hover:text-blue-700">Edit</button>
                           <button onClick={() => deleteItem(item.id)} className="text-xs text-red-400 hover:text-red-600">Delete</button>
                         </div>
                       </div>
 
-                      {/* Variants panel */}
-                      {expandedVariants === item.id && (
-                        <div className="mt-3 ml-0 bg-purple-50 border border-purple-100 rounded-lg p-3 space-y-2">
-                          <p className="text-xs font-semibold text-purple-700 mb-2">Variants (e.g. sizes, flavors)</p>
-                          {item.variants.length === 0 && (
-                            <p className="text-xs text-purple-400 mb-2">No variants yet. Add one below.</p>
-                          )}
-                          {item.variants.map((v) => (
-                            <div key={v.id} className="flex items-center justify-between gap-2 text-xs bg-white rounded px-2.5 py-1.5 border border-purple-100">
-                              <span className="font-medium text-gray-700">{v.name}</span>
-                              <div className="flex items-center gap-3">
-                                <span className="text-gray-500">
-                                  {v.priceDelta === 0
-                                    ? 'Base price'
-                                    : v.priceDelta > 0
-                                      ? `+${formatPrice(v.priceDelta)}`
-                                      : `-${formatPrice(Math.abs(v.priceDelta))}`}
-                                </span>
-                                <span className="text-gray-400 font-semibold">
-                                  = {formatPrice(item.price + v.priceDelta)}
-                                </span>
-                                <button
-                                  onClick={() => deleteVariant(item.id, v.id)}
-                                  className="text-red-400 hover:text-red-600"
-                                >
-                                  ✕
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                          <div className="flex items-center gap-2 pt-1">
-                            <input
-                              className="flex-1 text-xs border border-purple-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
-                              placeholder="Variant name (e.g. Small)"
-                              value={newVariant.name}
-                              onChange={(e) => setNewVariant((n) => ({ ...n, name: e.target.value }))}
-                            />
-                            <input
-                              type="number"
-                              step="0.01"
-                              className="w-24 text-xs border border-purple-200 rounded-lg px-2.5 py-1.5 focus:outline-none focus:ring-1 focus:ring-purple-400 bg-white"
-                              placeholder="±₹ delta"
-                              value={newVariant.priceDelta}
-                              onChange={(e) => setNewVariant((n) => ({ ...n, priceDelta: e.target.value }))}
-                            />
-                            <button
-                              onClick={() => addVariant(item.id)}
-                              disabled={variantSaving || !newVariant.name.trim()}
-                              className="text-xs bg-purple-500 hover:bg-purple-600 disabled:opacity-40 text-white rounded-lg px-3 py-1.5 font-medium transition-colors"
-                            >
-                              Add
-                            </button>
-                          </div>
-                        </div>
-                      )}
                     </div>
                   )}
                 </div>

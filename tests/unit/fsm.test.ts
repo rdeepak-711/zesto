@@ -64,7 +64,7 @@ describe('FSM global commands', () => {
 
   it('cancels and resets on "cancel"', () => {
     const out = processMessage(
-      makeInput({ message: 'cancel', state: 'AWAITING_MORE', cart: [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }] })
+      makeInput({ message: 'cancel', state: 'AWAITING_MORE', cart: [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1, fields: [] }] })
     )
     expect(out.nextState).toBe('IDLE')
     expect(out.cart).toHaveLength(0)
@@ -123,7 +123,7 @@ describe('FSM AWAITING_QUANTITY', () => {
   })
 
   it('increments quantity if same item already in cart', () => {
-    const existing = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
+    const existing = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1, fields: [] }]
     const out = processMessage(
       makeInput({
         message: '3',
@@ -149,7 +149,7 @@ describe('FSM AWAITING_QUANTITY', () => {
 })
 
 describe('FSM AWAITING_CONFIRMATION', () => {
-  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
+  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1, fields: [] }]
 
   it('moves to AWAITING_PAYMENT_METHOD on confirm', () => {
     const out = processMessage(makeInput({ message: 'confirm', state: 'AWAITING_CONFIRMATION', cart }))
@@ -181,7 +181,7 @@ describe('FSM AWAITING_CONFIRMATION', () => {
 })
 
 describe('FSM AWAITING_MORE (min order + checkout)', () => {
-  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
+  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1, fields: [] }]
 
   it('blocks checkout when below min order', () => {
     const out = processMessage(makeInput({ message: 'confirm', state: 'AWAITING_MORE', cart, minOrderAmount: 100000 }))
@@ -196,7 +196,7 @@ describe('FSM AWAITING_MORE (min order + checkout)', () => {
 })
 
 describe('FSM AWAITING_DELIVERY_DATE', () => {
-  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
+  const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1, fields: [] }]
 
   it('accepts delivery date and moves to confirmation', () => {
     const out = processMessage(makeInput({ message: 'Tomorrow 3pm', state: 'AWAITING_DELIVERY_DATE', cart }))

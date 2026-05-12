@@ -14,7 +14,7 @@ export default async function MenuPage() {
       items: {
         where: { available: true },
         orderBy: { sortOrder: 'asc' },
-        include: { variants: { orderBy: { sortOrder: 'asc' } } },
+        include: { fieldOptions: true },
       },
     },
   })
