@@ -7,87 +7,131 @@ datasource db {
   relationMode = "prisma"
 }
 
+enum FieldType {
+  text
+  number
+  select
+  boolean
+}
+
 model Tenant {
-  id             String   @id @default(uuid())
-  businessName   String   @db.VarChar(100)
-  businessType   String   @default("bakery") @db.VarChar(50)
-  ownerPhone     String   @db.VarChar(20)
-  whatsappNumber String   @unique @db.VarChar(20)
-  logoUrl        String?  @db.VarChar(500)
-  address        String?  @db.Text
-  currency       String   @default("INR") @db.VarChar(3)
-  minOrderAmount Int      @default(0)
-  active         Boolean  @default(true)
-  createdAt      DateTime @default(now())
+  id                  String   @id @default(uuid())
+  businessName        String   @db.VarChar(100)
+  businessType        String   @default("bakery") @db.VarChar(50)
+  ownerPhone          String   @db.VarChar(20)
+  whatsappNumber      String   @unique @db.VarChar(20)
+  logoUrl             String?  @db.VarChar(500)
+  address             String?  @db.Text
+  currency            String   @default("INR") @db.VarChar(3)
+  minOrderAmount      Int      @default(0)
+  deliveryDateEnabled Boolean  @default(true)
+  deliveryDateLabel   String   @default("When would you like your order?") @db.VarChar(200)
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
 
   @@map("tenants")
 }
 
 model MenuCategory {
-  id        String     @id @default(uuid())
-  tenantId  String?    @db.VarChar(36)
-  name      String     @db.VarChar(100)
-  sortOrder Int        @default(0)
-  active    Boolean    @default(true)
-  isCustom  Boolean    @default(false)
+  id        String          @id @default(uuid())
+  tenantId  String?         @db.VarChar(36)
+  name      String          @db.VarChar(100)
+  sortOrder Int             @default(0)
+  active    Boolean         @default(true)
+  isCustom  Boolean         @default(false)
   items     MenuItem[]
+  fields    CategoryField[]
 
   @@index([tenantId])
   @@map("menu_categories")
 }
 
 model MenuItem {
-  id          String              @id @default(uuid())
-  tenantId    String?             @db.VarChar(36)
-  categoryId  String
-  category    MenuCategory        @relation(fields: [categoryId], references: [id])
-  name        String              @db.VarChar(100)
-  description String?             @db.Text
-  price       Int
-  imageUrl    String?             @db.VarChar(500)
-  productUrl  String?             @db.VarChar(500)
-  available   Boolean             @default(true)
-  sortOrder   Int                 @default(0)
-  orderItems  OrderItem[]
-  variants    MenuItemVariant[]
+  id           String           @id @default(uuid())
+  tenantId     String?          @db.VarChar(36)
+  categoryId   String
+  category     MenuCategory     @relation(fields: [categoryId], references: [id])
+  name         String           @db.VarChar(100)
+  description  String?          @db.Text
+  price        Int
+  imageUrl     String?          @db.VarChar(500)
+  productUrl   String?          @db.VarChar(500)
+  available    Boolean          @default(true)
+  sortOrder    Int              @default(0)
+  orderItems   OrderItem[]
+  fieldOptions ItemFieldOption[]
 
   @@index([tenantId])
   @@index([categoryId])
   @@map("menu_items")
 }
 
-model MenuItemVariant {
-  id         String   @id @default(uuid())
-  menuItemId String
-  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
-  name       String   @db.VarChar(100)
-  priceDelta Int      @default(0)
-  sortOrder  Int      @default(0)
+model CategoryField {
+  id          String                @id @default(uuid())
+  tenantId    String                @db.VarChar(36)
+  categoryId  String
+  category    MenuCategory          @relation(fields: [categoryId], references: [id])
+  name        String                @db.VarChar(100)
+  type        FieldType
+  required    Boolean               @default(true)
+  placeholder String?               @db.VarChar(200)
+  sortOrder   Int                   @default(0)
+  options     CategoryFieldOption[]
+  itemOptions ItemFieldOption[]
 
+  @@index([categoryId])
+  @@index([tenantId])
+  @@map("category_fields")
+}
+
+model CategoryFieldOption {
+  id          String           @id @default(uuid())
+  fieldId     String
+  field       CategoryField    @relation(fields: [fieldId], references: [id])
+  label       String           @db.VarChar(100)
+  priceDelta  Int              @default(0)
+  sortOrder   Int              @default(0)
+  itemOptions ItemFieldOption[]
+
+  @@index([fieldId])
+  @@map("category_field_options")
+}
+
+model ItemFieldOption {
+  id         String              @id @default(uuid())
+  menuItemId String
+  menuItem   MenuItem            @relation(fields: [menuItemId], references: [id])
+  fieldId    String
+  field      CategoryField       @relation(fields: [fieldId], references: [id])
+  optionId   String
+  option     CategoryFieldOption @relation(fields: [optionId], references: [id])
+
+  @@unique([menuItemId, optionId])
   @@index([menuItemId])
-  @@map("menu_item_variants")
+  @@index([fieldId])
+  @@map("item_field_options")
 }
 
 model Order {
-  id              String        @id @default(uuid())
-  tenantId        String?       @db.VarChar(36)
-  customerPhone   String        @db.VarChar(20)
-  customerName    String        @db.VarChar(100)
-  status          OrderStatus   @default(PENDING)
-  totalAmount     Int
-  discountCode    String?       @db.VarChar(50)
-  discountAmount  Int           @default(0)
-  deliveryNote    String?       @db.VarChar(300)
-  paymentLinkId   String?       @db.VarChar(100)
-  paymentLinkUrl  String?       @db.VarChar(500)
-  notes           String?       @db.Text
-  paymentMethod   String        @default("ONLINE") @db.VarChar(10)
+  id             String        @id @default(uuid())
+  tenantId       String?       @db.VarChar(36)
+  customerPhone  String        @db.VarChar(20)
+  customerName   String        @db.VarChar(100)
+  status         OrderStatus   @default(PENDING)
+  totalAmount    Int
+  discountCode   String?       @db.VarChar(50)
+  discountAmount Int           @default(0)
+  deliveryNote   String?       @db.VarChar(300)
+  paymentLinkId  String?       @db.VarChar(100)
+  paymentLinkUrl String?       @db.VarChar(500)
+  notes          String?       @db.Text
+  paymentMethod  String        @default("ONLINE") @db.VarChar(10)
   bakerNotifiedAt DateTime?
-  createdAt       DateTime      @default(now())
-  updatedAt       DateTime      @updatedAt
-  items           OrderItem[]
-  messages        Message[]
-  feedback        OrderFeedback?
+  createdAt      DateTime      @default(now())
+  updatedAt      DateTime      @updatedAt
+  items          OrderItem[]
+  messages       Message[]
+  feedback       OrderFeedback?
 
   @@index([tenantId])
   @@index([customerPhone])
@@ -96,15 +140,15 @@ model Order {
 }
 
 model OrderItem {
-  id          String   @id @default(uuid())
-  orderId     String
-  order       Order    @relation(fields: [orderId], references: [id])
-  menuItemId  String
-  menuItem    MenuItem @relation(fields: [menuItemId], references: [id])
-  name        String   @db.VarChar(100)
-  price       Int
-  quantity    Int
-  variantName String?  @db.VarChar(100)
+  id         String   @id @default(uuid())
+  orderId    String
+  order      Order    @relation(fields: [orderId], references: [id])
+  menuItemId String
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id])
+  name       String   @db.VarChar(100)
+  price      Int
+  quantity   Int
+  fieldsJson String   @db.Text
 
   @@index([orderId])
   @@index([menuItemId])
@@ -175,7 +219,7 @@ model BotSession {
   customerPhone String   @db.VarChar(20)
   state         String   @default("IDLE") @db.VarChar(50)
   cartJson      String   @default("[]") @db.VarChar(4000)
-  contextJson   String   @default("{}") @db.VarChar(2000)
+  contextJson   String   @db.Text
   lastActive    DateTime @default(now()) @updatedAt
 
   @@unique([customerPhone, tenantId])
@@ -201,12 +245,14 @@ model BotRule {
 }
 
 model BotMessage {
-  key       String   @id @db.VarChar(100)
-  tenantId  String?  @db.VarChar(36)
+  id        String   @id @default(uuid()) @db.VarChar(36)
+  key       String   @db.VarChar(100)
+  tenantId  String   @db.VarChar(36)
   label     String   @db.VarChar(200)
   value     String   @db.Text
   updatedAt DateTime @updatedAt
 
+  @@unique([key, tenantId])
   @@index([tenantId])
   @@map("bot_messages")
 }
