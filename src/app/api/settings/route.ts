@@ -15,14 +15,13 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const data = await req.json()
-  const stringFields = ['businessName', 'businessType', 'address', 'logoUrl']
-  const update: Record<string, string | number> = {}
+  const stringFields = ['businessName', 'businessType', 'address', 'logoUrl', 'deliveryDateLabel']
+  const update: Record<string, string | number | boolean> = {}
   for (const key of stringFields) {
     if (data[key] !== undefined) update[key] = data[key]
   }
-  if (data.minOrderAmount !== undefined) {
-    update.minOrderAmount = Number(data.minOrderAmount)
-  }
+  if (data.minOrderAmount !== undefined) update.minOrderAmount = Number(data.minOrderAmount)
+  if (data.deliveryDateEnabled !== undefined) update.deliveryDateEnabled = Boolean(data.deliveryDateEnabled)
 
   const tenant = await db.tenant.update({
     where: { id: auth.tenantId },

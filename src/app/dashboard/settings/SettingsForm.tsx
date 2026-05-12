@@ -12,6 +12,8 @@ type Tenant = {
   whatsappNumber: string
   currency: string
   minOrderAmount: number
+  deliveryDateEnabled?: boolean | null
+  deliveryDateLabel?: string | null
 }
 
 export default function SettingsForm({ tenant }: { tenant: Tenant }) {
@@ -22,6 +24,8 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
     address: tenant.address ?? '',
     logoUrl: tenant.logoUrl ?? '',
     minOrderAmount: (tenant.minOrderAmount / 100).toFixed(0),
+    deliveryDateEnabled: tenant.deliveryDateEnabled ?? true,
+    deliveryDateLabel: tenant.deliveryDateLabel ?? 'When would you like your order?',
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -36,6 +40,7 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
       body: JSON.stringify({
         ...form,
         minOrderAmount: Math.round(Number(form.minOrderAmount || 0) * 100),
+        deliveryDateEnabled: form.deliveryDateEnabled,
       }),
     })
     setSaving(false)
@@ -106,6 +111,30 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
         value={form.address}
         onChange={(v) => setForm((f) => ({ ...f, address: v }))}
       />
+
+      {/* Checkout Settings */}
+      <div className="border-t border-gray-100 pt-6 mt-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-4">Checkout Settings</h3>
+        <label className="flex items-center gap-3 mb-4">
+          <input
+            type="checkbox"
+            checked={form.deliveryDateEnabled}
+            onChange={(e) => setForm((f) => ({ ...f, deliveryDateEnabled: e.target.checked }))}
+            className="h-4 w-4 rounded border-gray-300"
+          />
+          <span className="text-sm text-gray-700">Ask customer for delivery / pickup date</span>
+        </label>
+        <div>
+          <label className="block text-xs font-medium text-gray-500 mb-1">Date prompt (shown to customer)</label>
+          <input
+            type="text"
+            value={form.deliveryDateLabel}
+            onChange={(e) => setForm((f) => ({ ...f, deliveryDateLabel: e.target.value }))}
+            className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            placeholder="When would you like your order?"
+          />
+        </div>
+      </div>
 
       <div className="flex items-center gap-3 pt-1">
         <button
