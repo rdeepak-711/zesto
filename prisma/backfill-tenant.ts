@@ -70,7 +70,7 @@ async function main() {
   console.log(`  SEED_TENANT_ID=${tid}`)
 
   const { bootstrapTenant } = await import('./bootstrapTenant')
-  await bootstrapTenant(tenant.id)
+  await bootstrapTenant(tenant.id, db)
 }
 
 main().catch(console.error).finally(() => db.$disconnect())

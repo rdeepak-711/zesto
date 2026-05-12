@@ -1,9 +1,17 @@
+import { config } from 'dotenv'
+config({ path: '.env.local' })
+import { PrismaTiDBCloud } from '@tidbcloud/prisma-adapter'
 import { PrismaClient } from '@prisma/client'
 import { defaultBotMessages } from './seed'
 
-const db = new PrismaClient()
+export async function bootstrapTenant(tenantId: string, db?: PrismaClient) {
+  let localDb: PrismaClient | undefined
+  if (!db) {
+    const adapter = new PrismaTiDBCloud({ url: process.env.DATABASE_URL! })
+    localDb = new PrismaClient({ adapter } as never)
+    db = localDb
+  }
 
-export async function bootstrapTenant(tenantId: string) {
   const messages = defaultBotMessages(tenantId)
 
   for (const msg of messages) {
@@ -14,32 +22,26 @@ export async function bootstrapTenant(tenantId: string) {
     })
   }
 
-  // Ensure custom category + item sentinel exists for this tenant
-  const existingCustomCat = await db.menuCategory.findFirst({
-    where: { tenantId, isCustom: true },
+  // Ensure custom category + item sentinel exists for this tenant (idempotent)
+  const catId = `cat-custom-${tenantId.slice(0, 8)}`
+  const itemId = `item-custom-${tenantId.slice(0, 8)}`
+
+  await db.menuCategory.upsert({
+    where: { id: catId },
+    update: {},
+    create: { id: catId, tenantId, name: 'Custom Order', isCustom: true, sortOrder: 999 },
   })
-  if (!existingCustomCat) {
-    const cat = await db.menuCategory.create({
-      data: {
-        id: `cat-custom-${tenantId.slice(0, 8)}`,
-        tenantId,
-        name: 'Custom Order',
-        isCustom: true,
-        sortOrder: 999,
-      },
-    })
-    await db.menuItem.create({
-      data: {
-        id: `item-custom-${tenantId.slice(0, 8)}`,
-        tenantId,
-        categoryId: cat.id,
-        name: 'Custom Order',
-        price: 0,
-      },
-    })
-  }
+  await db.menuItem.upsert({
+    where: { id: itemId },
+    update: {},
+    create: { id: itemId, tenantId, categoryId: catId, name: 'Custom Order', price: 0 },
+  })
 
   console.log(`bootstrapTenant: seeded ${messages.length} messages for tenant ${tenantId}`)
+
+  if (localDb) {
+    await localDb.$disconnect()
+  }
 }
 
 // Run directly: npx tsx prisma/bootstrapTenant.ts <tenantId>
@@ -52,4 +54,6 @@ async function main() {
   await bootstrapTenant(tenantId)
 }
 
-main().catch(console.error).finally(() => db.$disconnect())
+if (require.main === module) {
+  main().catch(console.error)
+}

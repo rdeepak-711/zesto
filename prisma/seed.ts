@@ -1,7 +1,3 @@
-import { PrismaClient } from '@prisma/client'
-
-const db = new PrismaClient()
-
 export function defaultBotMessages(tenantId: string) {
   return [
     { key: 'welcome', tenantId, label: 'Welcome greeting', value: "👋 Welcome to {businessName}!\n\nWhat would you like today?\n\n{categories}\n\nReply with a number to browse and order.\n\n📦 Type *track* to check your order status\n❌ Type *cancel order* to cancel" },
@@ -46,4 +42,6 @@ async function main() {
   console.log('seed.ts: no direct DB writes — use bootstrapTenant.ts instead')
 }
 
-main().catch(console.error).finally(() => db.$disconnect())
+if (require.main === module) {
+  main().catch(console.error)
+}
