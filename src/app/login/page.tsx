@@ -1,16 +1,17 @@
 'use client'
 
 import { useState, Suspense } from 'react'
-import { useRouter, useSearchParams } from 'next/navigation'
+import { useSearchParams } from 'next/navigation'
 
 function LoginForm() {
-  const router = useRouter()
   const searchParams = useSearchParams()
   const from = searchParams.get('from') ?? '/dashboard'
 
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
-  const [step, setStep] = useState<'phone' | 'otp'>('phone')
+  const [step, setStep] = useState<'phone' | 'tenant' | 'otp'>('phone')
+  const [tenants, setTenants] = useState<{ id: string; businessName: string }[]>([])
+  const [selectedTenantId, setSelectedTenantId] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -23,6 +24,34 @@ function LoginForm() {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ phone }),
+    })
+
+    const data = await res.json()
+    setLoading(false)
+
+    if (!res.ok) {
+      setError('Failed to send OTP. Please try again.')
+      return
+    }
+
+    if (data.tenants && data.tenants.length > 1) {
+      setTenants(data.tenants)
+      setSelectedTenantId(data.tenants[0].id)
+      setStep('tenant')
+    } else {
+      setStep('otp')
+    }
+  }
+
+  async function handleSelectTenant(e: React.FormEvent) {
+    e.preventDefault()
+    setLoading(true)
+    setError('')
+
+    const res = await fetch('/api/auth/send-otp', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ phone, tenantId: selectedTenantId }),
     })
 
     setLoading(false)
@@ -52,13 +81,16 @@ function LoginForm() {
     }
   }
 
+  const subtitle =
+    step === 'phone' ? 'Enter your owner phone number' :
+    step === 'tenant' ? 'Which store do you want to access?' :
+    `Enter the code sent to ${phone}`
+
   return (
     <div className="min-h-screen flex items-center justify-center bg-gray-50">
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-md p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Zesto Dashboard</h1>
-        <p className="text-sm text-gray-500 mb-6">
-          {step === 'phone' ? 'Enter your owner phone number' : `Enter the code sent to ${phone}`}
-        </p>
+        <p className="text-sm text-gray-500 mb-6">{subtitle}</p>
 
         {error && (
           <div className="mb-4 rounded-lg bg-red-50 border border-red-200 text-red-700 px-4 py-3 text-sm">
@@ -66,7 +98,7 @@ function LoginForm() {
           </div>
         )}
 
-        {step === 'phone' ? (
+        {step === 'phone' && (
           <form onSubmit={handleSendOtp} className="space-y-4">
             <div>
               <label htmlFor="phone" className="block text-sm font-medium text-gray-700 mb-1">
@@ -87,10 +119,51 @@ function LoginForm() {
               disabled={loading || !phone}
               className="w-full rounded-lg bg-orange-500 text-white py-2 text-sm font-medium hover:bg-orange-600 disabled:opacity-50 transition-colors"
             >
-              {loading ? 'Sending…' : 'Send OTP'}
+              {loading ? 'Sending…' : 'Continue'}
             </button>
           </form>
-        ) : (
+        )}
+
+        {step === 'tenant' && (
+          <form onSubmit={handleSelectTenant} className="space-y-3">
+            {tenants.map(t => (
+              <label
+                key={t.id}
+                className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${
+                  selectedTenantId === t.id
+                    ? 'border-orange-400 bg-orange-50'
+                    : 'border-gray-200 hover:border-gray-300'
+                }`}
+              >
+                <input
+                  type="radio"
+                  name="tenant"
+                  value={t.id}
+                  checked={selectedTenantId === t.id}
+                  onChange={() => setSelectedTenantId(t.id)}
+                  className="accent-orange-500"
+                />
+                <span className="text-sm font-medium text-gray-800">{t.businessName}</span>
+              </label>
+            ))}
+            <button
+              type="submit"
+              disabled={loading || !selectedTenantId}
+              className="w-full rounded-lg bg-orange-500 text-white py-2 text-sm font-medium hover:bg-orange-600 disabled:opacity-50 transition-colors mt-2"
+            >
+              {loading ? 'Sending OTP…' : 'Send OTP'}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setStep('phone'); setError('') }}
+              className="w-full text-sm text-gray-500 hover:text-gray-700"
+            >
+              ← Change phone number
+            </button>
+          </form>
+        )}
+
+        {step === 'otp' && (
           <form onSubmit={handleVerifyOtp} className="space-y-4">
             <div>
               <label htmlFor="code" className="block text-sm font-medium text-gray-700 mb-1">
@@ -118,10 +191,10 @@ function LoginForm() {
             </button>
             <button
               type="button"
-              onClick={() => { setStep('phone'); setCode(''); setError('') }}
+              onClick={() => { setStep(tenants.length > 1 ? 'tenant' : 'phone'); setCode(''); setError('') }}
               className="w-full text-sm text-gray-500 hover:text-gray-700"
             >
-              ← Change phone number
+              ← Back
             </button>
           </form>
         )}

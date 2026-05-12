@@ -3,18 +3,29 @@ import { sendOtp } from '@/lib/otp'
 import { db } from '@/lib/db'
 
 export async function POST(req: NextRequest) {
-  const { phone } = await req.json()
+  const { phone, tenantId } = await req.json()
 
   if (!phone || typeof phone !== 'string') {
     return NextResponse.json({ error: 'Phone required' }, { status: 400 })
   }
 
-  const tenant = await db.tenant.findFirst({ where: { ownerPhone: phone, active: true } })
-  if (!tenant) {
-    // Return 200 to avoid enumeration — don't reveal valid phones
+  const tenants = await db.tenant.findMany({
+    where: { ownerPhone: phone, active: true },
+    select: { id: true, businessName: true },
+  })
+
+  if (tenants.length === 0) {
     return NextResponse.json({ ok: true })
   }
 
-  await sendOtp(phone, tenant.id)
+  // Multiple tenants on same phone — return list so client can show picker
+  if (tenants.length > 1 && !tenantId) {
+    return NextResponse.json({ ok: true, tenants })
+  }
+
+  const target = tenantId ? tenants.find(t => t.id === tenantId) : tenants[0]
+  if (!target) return NextResponse.json({ ok: true })
+
+  await sendOtp(phone, target.id)
   return NextResponse.json({ ok: true })
 }
