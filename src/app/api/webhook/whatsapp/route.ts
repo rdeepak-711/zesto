@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
 import { getSession, saveSession, resetSession } from '@/lib/botSession'
-import { processMessage, type BotState } from '@/lib/bot/fsm'
+import { processMessage, type BotState, itemTotal } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker } from '@/lib/bakerNotify'
 import type { Tenant } from '@prisma/client'
@@ -18,14 +18,18 @@ function orderStatusMessage(
     status: string
     totalAmount: number
     deliveryNote: string | null
-    items: { name: string; quantity: number; variantName?: string | null }[]
+    items: { name: string; quantity: number; fieldsJson?: string | null }[]
   },
   messages: Record<string, string>
 ): string {
   const shortId = order.id.slice(0, 8).toUpperCase()
   const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
   const itemLines = order.items
-    .map((i) => `• ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity}`)
+    .map((i) => {
+      const fields: { value: string }[] = JSON.parse(i.fieldsJson ?? '[]')
+      const fieldStr = fields.filter(f => f.value).map(f => f.value).join(', ')
+      return `• ${i.name}${fieldStr ? ` (${fieldStr})` : ''} × ${i.quantity}`
+    })
     .join('\n')
 
   const statusEmoji: Record<string, string> = {
@@ -76,7 +80,7 @@ async function getOwnerSession(ownerPhone: string, tenantId: string): Promise<{ 
   const row = await db.botSession.upsert({
     where: { customerPhone_tenantId: { customerPhone: ownerPhone, tenantId } },
     update: {},
-    create: { customerPhone: ownerPhone, tenantId, state: 'BAKER_IDLE' },
+    create: { customerPhone: ownerPhone, tenantId, state: 'BAKER_IDLE', contextJson: '{}', cartJson: '[]' },
   })
   return {
     state: (row.state as OwnerState) || 'BAKER_IDLE',
@@ -162,7 +166,11 @@ async function sendOwnerDetail(ownerPhone: string, tenantId: string, orderId: st
 
   const shortId = order.id.slice(0, 8).toUpperCase()
   const itemLines = order.items
-    .map(i => `• ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity}`)
+    .map(i => {
+      const fields: { value: string }[] = JSON.parse((i as any).fieldsJson ?? '[]')
+      const fieldStr = fields.filter(f => f.value).map(f => f.value).join(', ')
+      return `• ${i.name}${fieldStr ? ` (${fieldStr})` : ''} × ${i.quantity}`
+    })
     .join('\n')
   const deliveryLine = order.deliveryNote ? `\n📅 ${order.deliveryNote}` : ''
   const amountLine = order.totalAmount > 0 ? `\n💰 ₹${(order.totalAmount / 100).toFixed(0)}` : ''
@@ -341,7 +349,7 @@ export async function POST(req: NextRequest) {
   }
 
   // Customer message — run bot FSM
-  const [session, categories, menuItems, botMessageRows, rules, discountCodes] = await Promise.all([
+  const [session, categories, menuItems, botMessageRows, rules, discountCodes, categoryFields] = await Promise.all([
     getSession(customerPhone, tenant.id),
     db.menuCategory.findMany({
       where: { tenantId: tenant.id, active: true },
@@ -349,11 +357,18 @@ export async function POST(req: NextRequest) {
     }),
     db.menuItem.findMany({
       where: { tenantId: tenant.id, available: true },
-      include: { variants: { orderBy: { sortOrder: 'asc' } } },
     }),
     db.botMessage.findMany({ where: { tenantId: tenant.id } }),
     db.botRule.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: { sortOrder: 'asc' } }),
     db.discountCode.findMany({ where: { tenantId: tenant.id, active: true } }),
+    db.categoryField.findMany({
+      where: { tenantId: tenant.id },
+      include: {
+        options: { orderBy: { sortOrder: 'asc' } },
+        itemOptions: true,
+      },
+      orderBy: { sortOrder: 'asc' },
+    }),
   ])
 
   const messages = Object.fromEntries(botMessageRows.map((r) => [r.key, r.value]))
@@ -453,7 +468,7 @@ export async function POST(req: NextRequest) {
   ) {
     try {
       const menuSummary = menuItems
-        .map(i => `${i.name} (₹${(i.price / 100).toFixed(0)})${i.variants?.length ? ` [variants: ${i.variants.map(v => v.name).join(', ')}]` : ''}`)
+        .map(i => `${i.name} (₹${(i.price / 100).toFixed(0)})`)
         .join('\n')
 
       const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
@@ -466,12 +481,11 @@ export async function POST(req: NextRequest) {
               role: 'system',
               content: `You are an order parser for a food business. Given a customer message and menu, extract order details as JSON.
 Return ONLY valid JSON in this exact shape:
-{"items": [{"name": "exact menu item name", "quantity": 1, "variantHint": "optional size hint"}], "deliveryNote": "optional delivery time", "confidence": 0.0-1.0}
+{"items": [{"name": "exact menu item name", "quantity": 1}], "deliveryNote": "optional delivery time", "confidence": 0.0-1.0}
 Rules:
 - Only include items that clearly match something on the menu (fuzzy ok, but must be reasonable)
 - If the message is not an order (greeting, question, gibberish), return {"items": [], "confidence": 0}
-- confidence > 0.7 means you are sure about the order
-- variantHint is optional, only set if customer mentioned a size/variant`,
+- confidence > 0.7 means you are sure about the order`,
             },
             { role: 'user', content: `Menu:\n${menuSummary}\n\nCustomer message: "${body}"` },
           ],
@@ -494,23 +508,15 @@ Rules:
           )
           if (!item) { allMatched = false; break }
 
-          let price = item.price
-          let variantName: string | undefined
-
-          if (item.variants?.length && ai.variantHint) {
-            const v = item.variants.find(v => v.name.toLowerCase().includes(ai.variantHint.toLowerCase()))
-            if (v) { price += v.priceDelta; variantName = v.name }
-          }
-
-          cart.push({ menuItemId: item.id, name: item.name, price, quantity: ai.quantity ?? 1, variantName })
+          cart.push({ menuItemId: item.id, name: item.name, price: item.price, quantity: ai.quantity ?? 1, fields: [] })
         }
 
         if (allMatched && cart.length > 0) {
           const ctx = { ...(session.context), deliveryNote: parsed.deliveryNote ?? undefined }
           await saveSession(customerPhone, 'AWAITING_DELIVERY_DATE', cart, ctx, tenant.id)
 
-          const cartLines = cart.map(i => `• ${i.name}${i.variantName ? ` (${i.variantName})` : ''} × ${i.quantity} = ₹${((i.price * i.quantity) / 100).toFixed(0)}`).join('\n')
-          const total = cart.reduce((s, i) => s + i.price * i.quantity, 0)
+          const cartLines = cart.map(i => `• ${i.name} × ${i.quantity} = ₹${((i.price * i.quantity) / 100).toFixed(0)}`).join('\n')
+          const total = cart.reduce((s, i) => s + itemTotal(i), 0)
           const reply = parsed.deliveryNote
             ? `Got it! Here's what I have:\n\n${cartLines}\n\n*Total: ₹${(total / 100).toFixed(0)}*\n\n📅 Delivery: ${parsed.deliveryNote}\n\nWhen exactly would you like it? (or confirm the time if that's right)`
             : `Got it! Here's what I have:\n\n${cartLines}\n\n*Total: ₹${(total / 100).toFixed(0)}*\n\n📅 When would you like your order? (e.g. *Tomorrow 3pm*, *Friday evening*, *ASAP*)`
@@ -537,6 +543,9 @@ Rules:
     rules,
     minOrderAmount: tenant.minOrderAmount,
     discountCodes,
+    categoryFields,
+    deliveryDateEnabled: tenant.deliveryDateEnabled,
+    deliveryDateLabel: tenant.deliveryDateLabel,
   })
 
   if (output.placeOrder) {
@@ -591,20 +600,20 @@ Rules:
           paymentMethod,
           deliveryNote: output.context.deliveryNote,
           items: {
-            create: [{ menuItemId: 'item-custom', name: 'Custom Order', price: 0, quantity: 1 }],
+            create: [{ menuItemId: 'item-custom', name: 'Custom Order', price: 0, quantity: 1, fieldsJson: '[]' }],
           },
         },
       })
       await notifyBaker(
         order.id,
-        [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1 }],
+        [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1, fields: [] }],
         0,
         customerPhone,
         tenant.ownerPhone,
         paymentMethod
       )
     } else if (output.cart.length > 0) {
-      const cartTotal = output.cart.reduce((sum, i) => sum + i.price * i.quantity, 0)
+      const cartTotal = output.cart.reduce((sum, i) => sum + itemTotal(i), 0)
       const discountAmount = output.context.appliedDiscount ?? 0
       const totalAmount = Math.max(0, cartTotal - discountAmount)
 
@@ -624,7 +633,7 @@ Rules:
               name: item.name,
               price: item.price,
               quantity: item.quantity,
-              variantName: item.variantName,
+              fieldsJson: JSON.stringify(item.fields ?? []),
             })),
           },
         },

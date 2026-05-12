@@ -14,7 +14,10 @@ export async function notifyBaker(
   paymentMethod: string = 'ONLINE'
 ) {
   const itemLines = cart
-    .map((item) => `• ${item.name}${item.variantName ? ` (${item.variantName})` : ''} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`)
+    .map((item) => {
+      const fieldStr = (item.fields ?? []).filter(f => f.value).map(f => f.value).join(', ')
+      return `• ${item.name}${fieldStr ? ` (${fieldStr})` : ''} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`
+    })
     .join('\n')
 
   const paymentLine = paymentMethod === 'COD'
