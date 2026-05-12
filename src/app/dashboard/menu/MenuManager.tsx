@@ -1,7 +1,140 @@
 'use client'
 
-import { useState } from 'react'
+import React, { useState } from 'react'
 import { useRouter } from 'next/navigation'
+
+type FieldOption = { id: string; label: string; priceDelta: number; sortOrder: number }
+type CategoryField = {
+  id: string
+  name: string
+  type: 'text' | 'number' | 'select' | 'boolean'
+  required: boolean
+  placeholder?: string
+  sortOrder: number
+  options: FieldOption[]
+}
+
+function AddOptionRow({ onAdd }: { onAdd: (label: string, priceDelta: number) => void }) {
+  const [label, setLabel] = React.useState('')
+  const [delta, setDelta] = React.useState('')
+
+  function handleAdd() {
+    if (!label.trim()) return
+    onAdd(label.trim(), parseFloat(delta) || 0)
+    setLabel('')
+    setDelta('')
+  }
+
+  return (
+    <div className="flex gap-1 mt-1">
+      <input value={label} onChange={e => setLabel(e.target.value)} placeholder="Option label" className="flex-1 border border-gray-200 rounded px-2 py-0.5 text-xs" />
+      <input value={delta} onChange={e => setDelta(e.target.value)} placeholder="+₹" className="w-16 border border-gray-200 rounded px-2 py-0.5 text-xs" />
+      <button onClick={handleAdd} className="text-blue-500 text-xs px-2 hover:text-blue-700">+ Add option</button>
+    </div>
+  )
+}
+
+function CategoryFieldBuilder({ categoryId }: { categoryId: string }) {
+  const [fields, setFields] = React.useState<CategoryField[]>([])
+  const [loading, setLoading] = React.useState(true)
+  const [newFieldName, setNewFieldName] = React.useState('')
+  const [newFieldType, setNewFieldType] = React.useState<CategoryField['type']>('select')
+  const [newFieldRequired, setNewFieldRequired] = React.useState(true)
+
+  React.useEffect(() => {
+    fetch(`/api/menu/categories/${categoryId}/fields`)
+      .then(r => r.json())
+      .then(setFields)
+      .finally(() => setLoading(false))
+  }, [categoryId])
+
+  async function addField() {
+    if (!newFieldName.trim()) return
+    const res = await fetch(`/api/menu/categories/${categoryId}/fields`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: newFieldName.trim(), type: newFieldType, required: newFieldRequired, sortOrder: fields.length }),
+    })
+    const field = await res.json()
+    setFields(prev => [...prev, field])
+    setNewFieldName('')
+  }
+
+  async function deleteField(fieldId: string) {
+    await fetch(`/api/menu/fields/${fieldId}`, { method: 'DELETE' })
+    setFields(prev => prev.filter(f => f.id !== fieldId))
+  }
+
+  async function addOption(fieldId: string, label: string, priceDeltaRupees: number) {
+    const res = await fetch(`/api/menu/fields/${fieldId}/options`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ label, priceDelta: Math.round(priceDeltaRupees * 100), sortOrder: 0 }),
+    })
+    const option = await res.json()
+    setFields(prev => prev.map(f => f.id === fieldId ? { ...f, options: [...f.options, option] } : f))
+  }
+
+  async function deleteOption(fieldId: string, optionId: string) {
+    await fetch(`/api/menu/options/${optionId}`, { method: 'DELETE' })
+    setFields(prev => prev.map(f => f.id === fieldId ? { ...f, options: f.options.filter(o => o.id !== optionId) } : f))
+  }
+
+  if (loading) return <div className="text-xs text-gray-400 py-2">Loading fields...</div>
+
+  return (
+    <div className="mt-4 border-t border-gray-100 pt-4">
+      <h4 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-3">Custom Fields</h4>
+
+      {fields.map(field => (
+        <div key={field.id} className="mb-3 p-3 bg-gray-50 rounded-lg">
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm font-medium text-gray-700">
+              {field.name} <span className="text-xs text-gray-400">({field.type}{field.required ? '' : ', optional'})</span>
+            </span>
+            <button onClick={() => deleteField(field.id)} className="text-xs text-red-500 hover:text-red-700">Delete</button>
+          </div>
+
+          {field.type === 'select' && (
+            <div className="space-y-1">
+              {field.options.map(opt => (
+                <div key={opt.id} className="flex items-center justify-between text-xs text-gray-600 pl-2">
+                  <span>{opt.label} {opt.priceDelta > 0 ? `(+₹${(opt.priceDelta/100).toFixed(0)})` : ''}</span>
+                  <button onClick={() => deleteOption(field.id, opt.id)} className="text-red-400 hover:text-red-600 ml-2">×</button>
+                </div>
+              ))}
+              <AddOptionRow onAdd={(label, delta) => addOption(field.id, label, delta)} />
+            </div>
+          )}
+        </div>
+      ))}
+
+      <div className="flex gap-2 mt-3">
+        <input
+          value={newFieldName}
+          onChange={e => setNewFieldName(e.target.value)}
+          placeholder="Field name (e.g. Size)"
+          className="flex-1 border border-gray-200 rounded px-2 py-1 text-xs"
+        />
+        <select
+          value={newFieldType}
+          onChange={e => setNewFieldType(e.target.value as CategoryField['type'])}
+          className="border border-gray-200 rounded px-2 py-1 text-xs"
+        >
+          <option value="select">Select</option>
+          <option value="text">Text</option>
+          <option value="number">Number</option>
+          <option value="boolean">Yes/No</option>
+        </select>
+        <label className="flex items-center gap-1 text-xs text-gray-600">
+          <input type="checkbox" checked={newFieldRequired} onChange={e => setNewFieldRequired(e.target.checked)} />
+          Required
+        </label>
+        <button onClick={addField} className="bg-blue-500 text-white text-xs px-3 py-1 rounded hover:bg-blue-600">Add</button>
+      </div>
+    </div>
+  )
+}
 
 type MenuItemVariant = {
   id: string
@@ -87,6 +220,9 @@ export default function MenuManager({ categories: initial }: { categories: Categ
       }))
     )
   }
+
+  // Category field builder state
+  const [expandedFields, setExpandedFields] = useState<string | null>(null)
 
   // Category state
   const [addingCat, setAddingCat] = useState(false)
@@ -224,6 +360,12 @@ export default function MenuManager({ categories: initial }: { categories: Categ
                 </button>
               )}
               <button
+                onClick={() => setExpandedFields(expandedFields === cat.id ? null : cat.id)}
+                className="text-xs text-blue-500 hover:text-blue-700 font-medium"
+              >
+                Fields
+              </button>
+              <button
                 onClick={() => { setEditingCat(cat.id); setEditCatName(cat.name) }}
                 className="text-xs text-gray-400 hover:text-gray-600"
               >
@@ -248,6 +390,9 @@ export default function MenuManager({ categories: initial }: { categories: Categ
               <p className="text-xs text-purple-600 mt-2 font-medium">
                 Edit the prompt message in Dashboard → Bot Script → custom_prompt
               </p>
+              {expandedFields === cat.id && (
+                <CategoryFieldBuilder categoryId={cat.id} />
+              )}
             </div>
           ) : (
             <div className="divide-y divide-gray-50">
@@ -402,6 +547,11 @@ export default function MenuManager({ categories: initial }: { categories: Categ
                     <button onClick={() => addItem(cat.id)} className="text-xs bg-orange-500 text-white rounded-lg px-3 py-1.5 hover:bg-orange-600">Add</button>
                     <button onClick={() => setAdding(null)} className="text-xs text-gray-500 hover:text-gray-700">Cancel</button>
                   </div>
+                </div>
+              )}
+              {expandedFields === cat.id && (
+                <div className="px-5 pb-4">
+                  <CategoryFieldBuilder categoryId={cat.id} />
                 </div>
               )}
             </div>
