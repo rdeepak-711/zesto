@@ -68,6 +68,9 @@ async function main() {
   console.log(`\n✅ Backfill complete. Tenant ID: ${tid}`)
   console.log(`\nAdd to Vercel env vars:`)
   console.log(`  SEED_TENANT_ID=${tid}`)
+
+  const { bootstrapTenant } = await import('./bootstrapTenant')
+  await bootstrapTenant(tenant.id)
 }
 
 main().catch(console.error).finally(() => db.$disconnect())
