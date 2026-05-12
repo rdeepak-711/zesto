@@ -79,6 +79,7 @@ model CategoryField {
   options     CategoryFieldOption[]
   itemOptions ItemFieldOption[]
 
+  @@unique([categoryId, name])
   @@index([categoryId])
   @@index([tenantId])
   @@map("category_fields")
@@ -109,6 +110,7 @@ model ItemFieldOption {
   @@unique([menuItemId, optionId])
   @@index([menuItemId])
   @@index([fieldId])
+  @@index([optionId])
   @@map("item_field_options")
 }
 
