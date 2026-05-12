@@ -15,8 +15,8 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
   }
 
-  // Verify tenant still active
-  const tenant = await db.tenant.findFirst({ where: { id: tenantId, ownerPhone: phone, active: true } })
+  // phone here is the ownerPhone OTP was sent to — just verify tenant is still active
+  const tenant = await db.tenant.findFirst({ where: { id: tenantId, active: true } })
   if (!tenant) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
   }

@@ -12,6 +12,7 @@ function LoginForm() {
   const [step, setStep] = useState<'phone' | 'tenant' | 'otp'>('phone')
   const [tenants, setTenants] = useState<{ id: string; businessName: string }[]>([])
   const [selectedTenantId, setSelectedTenantId] = useState('')
+  const [otpPhone, setOtpPhone] = useState('') // actual phone OTP was sent to
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -39,6 +40,7 @@ function LoginForm() {
       setSelectedTenantId(data.tenants[0].id)
       setStep('tenant')
     } else {
+      if (data.otpPhone) setOtpPhone(data.otpPhone)
       setStep('otp')
     }
   }
@@ -54,8 +56,10 @@ function LoginForm() {
       body: JSON.stringify({ phone, tenantId: selectedTenantId }),
     })
 
+    const data2 = await res.json()
     setLoading(false)
     if (res.ok) {
+      if (data2.otpPhone) setOtpPhone(data2.otpPhone)
       setStep('otp')
     } else {
       setError('Failed to send OTP. Please try again.')
@@ -70,7 +74,7 @@ function LoginForm() {
     const res = await fetch('/api/auth/verify-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone, code }),
+      body: JSON.stringify({ phone: otpPhone || phone, code }),
     })
 
     setLoading(false)
