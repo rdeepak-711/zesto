@@ -1,11 +1,26 @@
 import { db } from '@/lib/db'
 
+export type FieldSelection = {
+  name: string
+  value: string
+  priceDelta: number
+}
+
+export type FieldDef = {
+  id: string
+  name: string
+  type: 'text' | 'number' | 'select' | 'boolean'
+  required: boolean
+  placeholder?: string
+  options: { id: string; label: string; priceDelta: number }[]
+}
+
 export type CartItem = {
   menuItemId: string
   name: string
-  price: number
+  price: number      // base price in paise (NOT including field deltas)
   quantity: number
-  variantName?: string
+  fields: FieldSelection[]
 }
 
 export type BotContext = {
@@ -13,8 +28,6 @@ export type BotContext = {
   selectedItemId?: string
   selectedItemName?: string
   selectedItemPrice?: number
-  selectedVariantName?: string
-  selectedVariantDelta?: number
   customerName?: string
   customDescription?: string
   deliveryNote?: string
@@ -22,6 +35,9 @@ export type BotContext = {
   appliedDiscount?: number
   paymentMethod?: 'ONLINE' | 'COD'
   nudgedAt?: string
+  // field collection — replaces selectedVariantName/selectedVariantDelta
+  pendingFields?: FieldDef[]
+  collectedFields?: FieldSelection[]
 }
 
 export type BotSession = {
@@ -36,14 +52,24 @@ export async function getSession(customerPhone: string, tenantId: string): Promi
   const row = await db.botSession.upsert({
     where: { customerPhone_tenantId: { customerPhone, tenantId } },
     update: {},
-    create: { customerPhone, tenantId },
+    create: { customerPhone, tenantId, contextJson: '{}', cartJson: '[]' },
   })
+
+  // Backward-compat: old sessions may have variantName instead of fields
+  const rawCart = JSON.parse(row.cartJson || '[]') as Record<string, unknown>[]
+  const cart: CartItem[] = rawCart.map(i => ({
+    menuItemId: i.menuItemId as string,
+    name: i.name as string,
+    price: i.price as number,
+    quantity: i.quantity as number,
+    fields: Array.isArray(i.fields) ? i.fields as FieldSelection[] : [],
+  }))
 
   return {
     id: row.id,
     customerPhone: row.customerPhone,
     state: row.state,
-    cart: JSON.parse(row.cartJson || '[]') as CartItem[],
+    cart,
     context: JSON.parse(row.contextJson || '{}') as BotContext,
   }
 }
@@ -68,10 +94,6 @@ export async function saveSession(
 export async function resetSession(customerPhone: string, tenantId: string) {
   await db.botSession.update({
     where: { customerPhone_tenantId: { customerPhone, tenantId } },
-    data: {
-      state: 'IDLE',
-      cartJson: '[]',
-      contextJson: '{}',
-    },
+    data: { state: 'IDLE', cartJson: '[]', contextJson: '{}' },
   })
 }
