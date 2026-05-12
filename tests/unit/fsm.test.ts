@@ -151,10 +151,10 @@ describe('FSM AWAITING_QUANTITY', () => {
 describe('FSM AWAITING_CONFIRMATION', () => {
   const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1 }]
 
-  it('places order on confirm', () => {
+  it('moves to AWAITING_PAYMENT_METHOD on confirm', () => {
     const out = processMessage(makeInput({ message: 'confirm', state: 'AWAITING_CONFIRMATION', cart }))
-    expect(out.placeOrder).toBe(true)
-    expect(out.nextState).toBe('ORDER_PENDING')
+    expect(out.placeOrder).toBe(false)
+    expect(out.nextState).toBe('AWAITING_PAYMENT_METHOD')
   })
 
   it('cancels on no', () => {
@@ -205,50 +205,204 @@ describe('FSM AWAITING_DELIVERY_DATE', () => {
   })
 })
 
-describe('FSM AWAITING_VARIANT', () => {
-  const menuItemsWithVariants = [
-    ...menuItems,
-    {
-      id: 'item-layered',
-      name: 'Layered Cake',
-      price: 120000,
-      categoryId: 'cat-cakes',
-      variants: [
-        { id: 'v1', name: 'Small (500g)', priceDelta: 0 },
-        { id: 'v2', name: 'Large (1kg)', priceDelta: 30000 },
-      ],
-    },
-  ]
+// --- AWAITING_FIELD tests ---
 
-  it('shows variant list when item has variants', () => {
-    // Sorted alphabetically: 1=Chocolate, 2=Layered, 3=Vanilla
-    const out = processMessage(
-      makeInput({
-        message: '2',
-        state: 'AWAITING_ITEM',
-        menuItems: menuItemsWithVariants,
-        context: { selectedCategoryId: 'cat-cakes' },
-      })
-    )
-    expect(out.nextState).toBe('AWAITING_VARIANT')
-    expect(out.context.selectedItemId).toBe('item-layered')
+const sizeField: import('@/lib/bot/fsm').RawCategoryField = {
+  id: 'field-size',
+  categoryId: 'cat-cakes',
+  name: 'Size',
+  type: 'select',
+  required: true,
+  placeholder: null,
+  sortOrder: 0,
+  options: [
+    { id: 'opt-500g', label: '500g', priceDelta: 0, sortOrder: 0 },
+    { id: 'opt-1kg', label: '1kg', priceDelta: 30000, sortOrder: 1 },
+    { id: 'opt-2kg', label: '2kg', priceDelta: 60000, sortOrder: 2 },
+  ],
+  itemOptions: [],
+}
+
+const flavourField: import('@/lib/bot/fsm').RawCategoryField = {
+  id: 'field-flavour',
+  categoryId: 'cat-cakes',
+  name: 'Flavour',
+  type: 'select',
+  required: true,
+  placeholder: null,
+  sortOrder: 1,
+  options: [
+    { id: 'opt-choc', label: 'Chocolate', priceDelta: 0, sortOrder: 0 },
+    { id: 'opt-vanilla', label: 'Vanilla', priceDelta: 0, sortOrder: 1 },
+  ],
+  itemOptions: [],
+}
+
+const textField: import('@/lib/bot/fsm').RawCategoryField = {
+  id: 'field-note',
+  categoryId: 'cat-cakes',
+  name: 'Special note',
+  type: 'text',
+  required: false,
+  placeholder: 'Any message on the cake?',
+  sortOrder: 2,
+  options: [],
+  itemOptions: [],
+}
+
+const menuItemsWithFields = [
+  { id: 'item-choc', name: 'Chocolate Cake', price: 80000, categoryId: 'cat-cakes', description: null, imageUrl: null, productUrl: null },
+  { id: 'item-vanilla', name: 'Vanilla Cake', price: 70000, categoryId: 'cat-cakes', description: null, imageUrl: null, productUrl: null },
+  { id: 'item-croissant', name: 'Butter Croissant', price: 8000, categoryId: 'cat-pastries', description: null, imageUrl: null, productUrl: null },
+]
+
+const fieldMessages = {
+  ...defaultMessages,
+  field_prompt_footer: 'Reply with a number to select.',
+  invalid_field: 'Please choose a valid option.',
+}
+
+function makeFieldInput(overrides: Partial<import('@/lib/bot/fsm').BotInput>): import('@/lib/bot/fsm').BotInput {
+  return {
+    message: '',
+    state: 'IDLE',
+    cart: [],
+    context: {},
+    categories,
+    menuItems: menuItemsWithFields,
+    messages: fieldMessages,
+    categoryFields: [sizeField, flavourField],
+    ...overrides,
+  }
+}
+
+describe('AWAITING_ITEM with fields', () => {
+  it('transitions to AWAITING_FIELD when category has fields', () => {
+    const out = processMessage(makeFieldInput({
+      message: '1',
+      state: 'AWAITING_ITEM',
+      context: { selectedCategoryId: 'cat-cakes' },
+      categoryFields: [sizeField],
+    }))
+    expect(out.nextState).toBe('AWAITING_FIELD')
+    expect(out.context.pendingFields).toHaveLength(1)
+    expect(out.context.collectedFields).toHaveLength(0)
+    expect(out.reply).toContain('Size')
+    expect(out.reply).toContain('500g')
+    expect(out.reply).toContain('1kg')
   })
 
-  it('selects variant by number and adjusts price', () => {
-    const out = processMessage(
-      makeInput({
-        message: '2',
-        state: 'AWAITING_VARIANT',
-        menuItems: menuItemsWithVariants,
-        context: {
-          selectedItemId: 'item-layered',
-          selectedItemName: 'Layered Cake',
-          selectedItemPrice: 120000,
-        },
-      })
-    )
+  it('skips AWAITING_FIELD and goes to AWAITING_QUANTITY when no fields', () => {
+    const out = processMessage(makeFieldInput({
+      message: '1',
+      state: 'AWAITING_ITEM',
+      context: { selectedCategoryId: 'cat-pastries' },
+      categoryFields: [sizeField], // sizeField belongs to cat-cakes, not pastries
+    }))
     expect(out.nextState).toBe('AWAITING_QUANTITY')
-    expect(out.context.selectedItemPrice).toBe(150000) // 120000 + 30000
-    expect(out.context.selectedVariantName).toBe('Large (1kg)')
+  })
+})
+
+describe('AWAITING_FIELD — select field', () => {
+  const baseContext = {
+    selectedCategoryId: 'cat-cakes',
+    selectedItemId: 'item-choc',
+    selectedItemName: 'Chocolate Cake',
+    selectedItemPrice: 80000,
+    pendingFields: [
+      { id: 'field-size', name: 'Size', type: 'select' as const, required: true, options: [
+        { id: 'opt-500g', label: '500g', priceDelta: 0 },
+        { id: 'opt-1kg', label: '1kg', priceDelta: 30000 },
+      ]},
+      { id: 'field-flavour', name: 'Flavour', type: 'select' as const, required: true, options: [
+        { id: 'opt-choc', label: 'Chocolate', priceDelta: 0 },
+      ]},
+    ],
+    collectedFields: [],
+  }
+
+  it('accepts number pick for select field, advances to next field', () => {
+    const out = processMessage(makeFieldInput({
+      message: '2',
+      state: 'AWAITING_FIELD',
+      context: baseContext,
+    }))
+    expect(out.nextState).toBe('AWAITING_FIELD')
+    expect(out.context.collectedFields).toHaveLength(1)
+    expect(out.context.collectedFields![0]).toEqual({ name: 'Size', value: '1kg', priceDelta: 30000 })
+    expect(out.reply).toContain('Flavour')
+  })
+
+  it('accepts text label for select field', () => {
+    const out = processMessage(makeFieldInput({
+      message: '500g',
+      state: 'AWAITING_FIELD',
+      context: baseContext,
+    }))
+    expect(out.context.collectedFields![0].value).toBe('500g')
+    expect(out.context.collectedFields![0].priceDelta).toBe(0)
+  })
+
+  it('rejects invalid pick and re-prompts', () => {
+    const out = processMessage(makeFieldInput({
+      message: '99',
+      state: 'AWAITING_FIELD',
+      context: baseContext,
+    }))
+    expect(out.nextState).toBe('AWAITING_FIELD')
+    expect(out.context.collectedFields).toHaveLength(0)
+  })
+
+  it('transitions to AWAITING_QUANTITY after last field', () => {
+    const out = processMessage(makeFieldInput({
+      message: '1',
+      state: 'AWAITING_FIELD',
+      context: {
+        ...baseContext,
+        collectedFields: [{ name: 'Size', value: '500g', priceDelta: 0 }],
+      },
+    }))
+    expect(out.nextState).toBe('AWAITING_QUANTITY')
+    expect(out.context.collectedFields).toHaveLength(2)
+  })
+})
+
+describe('AWAITING_FIELD — text field', () => {
+  const baseCtx = {
+    selectedItemId: 'item-choc',
+    selectedItemName: 'Chocolate Cake',
+    selectedItemPrice: 80000,
+    pendingFields: [{ id: 'field-note', name: 'Special note', type: 'text' as const, required: false, placeholder: 'Any message?', options: [] }],
+    collectedFields: [],
+  }
+
+  it('accepts any non-empty text', () => {
+    const out = processMessage(makeFieldInput({ message: 'Happy Birthday!', state: 'AWAITING_FIELD', context: baseCtx }))
+    expect(out.nextState).toBe('AWAITING_QUANTITY')
+    expect(out.context.collectedFields![0].value).toBe('Happy Birthday!')
+  })
+
+  it('accepts skip for non-required field', () => {
+    const out = processMessage(makeFieldInput({ message: 'skip', state: 'AWAITING_FIELD', context: baseCtx }))
+    expect(out.nextState).toBe('AWAITING_QUANTITY')
+    expect(out.context.collectedFields![0].value).toBe('')
+  })
+})
+
+describe('AWAITING_QUANTITY with fields', () => {
+  it('cart item has fields and uses itemTotal for dedup key', () => {
+    const context = {
+      selectedItemId: 'item-choc',
+      selectedItemName: 'Chocolate Cake',
+      selectedItemPrice: 80000,
+      collectedFields: [{ name: 'Size', value: '1kg', priceDelta: 30000 }],
+    }
+    const out = processMessage(makeFieldInput({ message: '2', state: 'AWAITING_QUANTITY', context, categoryFields: [] }))
+    expect(out.cart).toHaveLength(1)
+    expect(out.cart[0].fields).toHaveLength(1)
+    expect(out.cart[0].price).toBe(80000)  // base price
+    expect(out.cart[0].quantity).toBe(2)
+    // total displayed should include field delta: (80000 + 30000) * 2 = 220000 = ₹2200
+    expect(out.reply).toContain('2200')
   })
 })
