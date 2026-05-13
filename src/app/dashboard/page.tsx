@@ -47,6 +47,11 @@ export default async function OrdersPage({
   const auth = await getAuthFromCookies()
   if (!auth) redirect('/login')
 
+  const realCategoryCount = await db.menuCategory.count({
+    where: { tenantId: auth.tenantId, isCustom: false },
+  })
+  if (realCategoryCount === 0) redirect('/dashboard/setup')
+
   const params = await searchParams
   const statusFilter = params.status?.toUpperCase()
 

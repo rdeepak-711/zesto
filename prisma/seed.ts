@@ -2,6 +2,8 @@ export function defaultBotMessages(tenantId: string) {
   return [
     { key: 'welcome', tenantId, label: 'Welcome greeting', value: "👋 Welcome to {businessName}!\n\nWhat would you like today?\n\n{categories}\n\nReply with a number to browse and order.\n\n📦 Type *track* to check your order status\n❌ Type *cancel order* to cancel" },
     { key: 'order_placed', tenantId, label: 'Order placed', value: "🎉 Order placed! The team will review it and get back to you shortly.\n\nType *track* to check your order status anytime. Thank you!" },
+    { key: 'closed_message', tenantId, label: 'Outside business hours', value: "😴 We're closed right now!\n\nWe're open {openDays}, {openTime}–{closeTime}.\n\nSend us a message then and we'll be happy to help! 🙏" },
+    { key: 'social_footer', tenantId, label: 'Social links / sign-off', value: "" },
     { key: 'order_placed_cod', tenantId, label: 'Order placed (COD)', value: "🎉 Order placed! Payment will be collected on delivery. The team will confirm shortly." },
     { key: 'custom_prompt', tenantId, label: 'Custom order prompt', value: "✏️ Tell us exactly what you'd like — include all relevant details. Be as specific as possible!" },
     { key: 'menu_header', tenantId, label: 'Menu command reply', value: '*Our Menu*\n\n{categories}\n\nReply with a number to browse.' },

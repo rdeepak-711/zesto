@@ -15,7 +15,11 @@ export async function PATCH(req: NextRequest) {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const data = await req.json()
-  const stringFields = ['businessName', 'businessType', 'address', 'logoUrl', 'deliveryDateLabel']
+  const stringFields = [
+    'businessName', 'businessType', 'address', 'logoUrl', 'deliveryDateLabel',
+    'timezone', 'openDays', 'openTime', 'closeTime',
+    'websiteUrl', 'instagramUrl', 'facebookUrl',
+  ]
   const update: Record<string, string | number | boolean> = {}
   for (const key of stringFields) {
     if (data[key] !== undefined) update[key] = data[key]

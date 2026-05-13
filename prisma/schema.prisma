@@ -26,6 +26,15 @@ model Tenant {
   minOrderAmount      Int      @default(0)
   deliveryDateEnabled Boolean  @default(true)
   deliveryDateLabel   String   @default("When would you like your order?") @db.VarChar(200)
+  // Operating hours
+  timezone            String   @default("Asia/Kolkata") @db.VarChar(50)
+  openDays            String   @default("1,2,3,4,5,6") @db.VarChar(20)
+  openTime            String   @default("09:00") @db.VarChar(5)
+  closeTime           String   @default("21:00") @db.VarChar(5)
+  // Social / web presence
+  websiteUrl          String?  @db.VarChar(500)
+  instagramUrl        String?  @db.VarChar(500)
+  facebookUrl         String?  @db.VarChar(500)
   active              Boolean  @default(true)
   createdAt           DateTime @default(now())
 

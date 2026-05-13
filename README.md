@@ -7,17 +7,19 @@ A multi-tenant WhatsApp ordering bot + owner dashboard. Customers order via What
 ## Features
 
 - **Multi-tenant SaaS** — one Zesto deployment hosts many businesses; each tenant has their own WA number, menu, orders, and owner login
-- **WhatsApp bot** — conversational ordering flow: categories → items → variants → quantity → delivery date → discount code → confirm
+- **Self-service onboarding** — new tenants run a 3-step setup wizard (store settings → menu builder → bot script) before the dashboard unlocks
+- **WhatsApp bot** — conversational ordering flow: categories → items → category fields → quantity → delivery date → discount code → confirm
+- **Category fields** — per-category customisation questions (multiple choice or short text) asked at order time; answers stored as JSON on each order item
 - **Order tracking** — customers type `track` to get live status; `cancel order` to request cancellation
-- **Owner WhatsApp management** — type `orders` to get a paginated list; pick by number to see detail and take action (accept/reject/pay/complete) — no dashboard required
-- **Owner dashboard** — orders, conversations, customers CRM, menu manager, analytics, settings
-- **Product variants** — size/flavour options with price deltas per item
+- **Owner WhatsApp management** — type `orders` for a paginated list; pick by number to see detail and take action (accept/reject/pay/complete) — no dashboard needed
+- **Owner dashboard** — orders, conversations, customers CRM, menu manager, analytics, bot script, settings
 - **Discount codes** — percent or flat-off, with expiry and usage limits; validated at checkout
 - **Broadcast messages** — send a WhatsApp message to all past customers in one click
 - **Razorpay payments** — owner sends payment link via WhatsApp; customer pays in browser
 - **Post-order feedback** — bot asks for a 1–5 star rating after order is completed
 - **OTP login** — owner authenticates via WhatsApp OTP (no password)
-- **Menu management** — add/edit items with image, description, variants; hide seasonal items
+- **Delivery date toggle** — enable/disable delivery date collection per tenant, with customisable prompt label
+- **Business hours** — open/close time, open days, and timezone stored per tenant
 - **Custom orders** — customer describes a bespoke item; AI (OpenRouter) reformats for the owner
 - **Business types** — bakery, restaurant, grocery, café, pharmacy, pet store, florist, or general retail
 
@@ -55,11 +57,12 @@ A multi-tenant WhatsApp ordering bot + owner dashboard. Customers order via What
    OPENROUTER_API_KEY=sk-or-...    # optional — falls back to raw description
    ```
 
-3. **Push schema + seed + backfill first tenant**
+3. **Push schema + seed**
    ```bash
    npx prisma db push
-   npx tsx prisma/seed.ts
-   npx tsx prisma/backfill-tenant.ts   # creates the first tenant row from env vars
+   npx tsx prisma/seed.ts                # seeds bot message keys + sample menu
+   npx tsx prisma/seed-demo-tenants.ts  # creates 5 demo tenants (dev only)
+   npx tsx prisma/backfill-tenant.ts    # creates first production tenant from env vars
    ```
 
 4. **Run dev server**
@@ -72,6 +75,19 @@ A multi-tenant WhatsApp ordering bot + owner dashboard. Customers order via What
    npx localtunnel --port 3000
    # Set Twilio sandbox webhook to: https://<your-tunnel>/api/webhook/whatsapp
    ```
+
+## Onboarding a New Tenant
+
+New tenants are created by inserting a row in the `tenants` table (via `backfill-tenant.ts` or directly). On first dashboard login, the tenant has no menu categories — the dashboard redirects them to `/dashboard/setup` where a 3-step wizard collects:
+
+1. **Store settings** — business name, type, address, hours, timezone, social links
+2. **Menu builder** — categories, items (name + price), and per-category customisation fields
+3. **Bot script** — review/edit auto-seeded bot messages → "Go live" bootstraps 37 default messages and redirects to the dashboard
+
+In development, use the dev login bypass to skip OTP:
+```
+http://localhost:3000/api/dev/login?phone=+91XXXXXXXXXX
+```
 
 ## Dashboard Login
 
@@ -116,24 +132,30 @@ src/
   app/
     api/
       auth/              # send-otp, verify-otp, logout
+      bootstrap/         # POST — seeds 37 bot messages + Custom Order category for a tenant
       broadcast/         # send WhatsApp to tenant's customers
       contact/           # landing page contact form
+      dev/login/         # GET — dev-only OTP bypass (blocked in production)
       discounts/[id]/    # discount code CRUD (auth + tenantId scoped)
-      menu/              # categories + items + variants CRUD (tenantId scoped)
+      menu/              # categories + items + category fields CRUD (tenantId scoped)
+      onboard/           # POST — saves Step 1 + Step 2 wizard data
       payment/           # Razorpay create-order + verify
       settings/          # tenant config update
       analytics/         # revenue + order analytics (tenantId scoped)
       webhook/whatsapp/  # Twilio webhook — routes by To number → tenant → bot FSM
     dashboard/
       layout.tsx         # auth check, tenant lookup, sidebar with businessName
+      page.tsx           # redirects to /dashboard/setup if no menu categories exist
+      setup/             # 3-step onboarding wizard (store → menu → bot script)
       orders/            # order list + detail with progress tracker
       conversations/     # per-customer message inbox
       customers/         # CRM with spend summary
       broadcast/         # compose + send broadcast
       discounts/         # manage discount codes
-      menu/              # menu manager with variants
+      menu/              # menu manager with category fields builder
       analytics/         # revenue + order charts
-      settings/          # tenant config, min order, bot messages
+      settings/          # tenant config, delivery date, bot messages
+      bot/               # bot script editor
     pay/[orderId]/       # customer-facing Razorpay payment page (shows businessName)
     login/               # OTP login
   lib/
@@ -147,8 +169,11 @@ src/
   proxy.ts               # auth guard for /dashboard routes
 prisma/
   schema.prisma
-  seed.ts
+  seed.ts                # bot message keys + sample menu for dev
+  seed-demo-tenants.ts   # 5 demo tenants for local testing
   backfill-tenant.ts     # creates first tenant from TWILIO_WHATSAPP_NUMBER env var
+  bootstrapTenant.ts     # seeds 37 default bot messages per tenant
+  migrate-variants.ts    # one-time migration: item variants → category fields
 tests/
   unit/fsm.test.ts       # Vitest unit tests for bot FSM
 ```

@@ -8,6 +8,31 @@ import type { Tenant } from '@prisma/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
+function isWithinBusinessHours(tenant: { timezone: string; openDays: string; openTime: string; closeTime: string }): boolean {
+  try {
+    const localStr = new Date().toLocaleString('en-US', { timeZone: tenant.timezone })
+    const local = new Date(localStr)
+    const day = local.getDay()
+    const openDays = tenant.openDays.split(',').map((d: string) => parseInt(d.trim()))
+    if (!openDays.includes(day)) return false
+    const cur = local.getHours() * 60 + local.getMinutes()
+    const [oh, om] = tenant.openTime.split(':').map(Number)
+    const [ch, cm] = tenant.closeTime.split(':').map(Number)
+    return cur >= oh * 60 + om && cur < ch * 60 + cm
+  } catch {
+    return true // fail open so bugs don't block all messages
+  }
+}
+
+function buildSocialFooter(tenant: { websiteUrl?: string | null; instagramUrl?: string | null; facebookUrl?: string | null }, socialFooterMsg: string): string {
+  const lines: string[] = []
+  if (tenant.websiteUrl) lines.push(`🌐 ${tenant.websiteUrl}`)
+  if (tenant.instagramUrl) lines.push(`📸 ${tenant.instagramUrl}`)
+  if (tenant.facebookUrl) lines.push(`👍 ${tenant.facebookUrl}`)
+  if (lines.length === 0) return socialFooterMsg || ''
+  return socialFooterMsg ? `${socialFooterMsg}\n\n${lines.join('\n')}` : lines.join('\n')
+}
+
 function formatPrice(paise: number) {
   return `₹${(paise / 100).toFixed(0)}`
 }
@@ -348,6 +373,23 @@ export async function POST(req: NextRequest) {
     return new NextResponse('', { status: 200 })
   }
 
+  // ── Business hours check ──────────────────────────────────────────────────
+  if (!isWithinBusinessHours(tenant)) {
+    const closedMsg = await db.botMessage.findUnique({
+      where: { key_tenantId: { key: 'closed_message', tenantId: tenant.id } },
+    })
+    const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
+    const openDayLabels = tenant.openDays.split(',').map((d: string) => dayNames[parseInt(d)] ?? d).join('–')
+    const reply = (closedMsg?.value ?? "😴 We're closed right now!")
+      .replace('{openDays}', openDayLabels)
+      .replace('{openTime}', tenant.openTime)
+      .replace('{closeTime}', tenant.closeTime)
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN' } })
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+    await sendWhatsApp(customerPhone, reply)
+    return new NextResponse('', { status: 200 })
+  }
+
   // Customer message — run bot FSM
   const [session, categories, menuItems, botMessageRows, rules, discountCodes, categoryFields] = await Promise.all([
     getSession(customerPhone, tenant.id),
@@ -654,8 +696,13 @@ Rules:
     await saveSession(customerPhone, output.nextState, output.cart, output.context, tenant.id)
   }
 
-  await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: output.reply, direction: 'OUT' } })
-  await sendWhatsApp(customerPhone, output.reply)
+  let finalReply = output.reply
+  if (output.placeOrder) {
+    const footer = buildSocialFooter(tenant, messages['social_footer'] ?? '')
+    if (footer) finalReply = `${output.reply}\n\n${footer}`
+  }
+  await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: finalReply, direction: 'OUT' } })
+  await sendWhatsApp(customerPhone, finalReply)
 
   return new NextResponse('', { status: 200 })
 }
