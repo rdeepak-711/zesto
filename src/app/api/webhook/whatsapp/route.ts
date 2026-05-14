@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { getSession, saveSession, resetSession } from '@/lib/botSession'
+import { getSession, saveSession, resetSession, isSessionStale } from '@/lib/botSession'
 import { processMessage, type BotState, itemTotal } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker } from '@/lib/bakerNotify'
@@ -497,6 +497,19 @@ export async function POST(req: NextRequest) {
       reply = messages['cancel_request_sent'] ?? `Your cancellation request for order *#${shortId}* has been sent. We'll confirm shortly.`
     }
 
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+    await sendWhatsApp(customerPhone, reply)
+    return new NextResponse('', { status: 200 })
+  }
+
+  // ── Session staleness reset ───────────────────────────────────────────────
+  if (isSessionStale(session.state, session.lastActive)) {
+    await resetSession(customerPhone, tenant.id)
+    const sortedCats = categories.sort((a, b) => a.sortOrder - b.sortOrder)
+    const catList = sortedCats.map((c, i) => `${i + 1}. ${c.name}`).join('\n')
+    const reply = messages['welcome']
+      ? messages['welcome'].replace('{categories}', catList)
+      : `Welcome back! 👋 Type *hi* to start a new order.`
     await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply)
     return new NextResponse('', { status: 200 })

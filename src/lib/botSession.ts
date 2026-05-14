@@ -46,6 +46,14 @@ export type BotSession = {
   state: string
   cart: CartItem[]
   context: BotContext
+  lastActive: Date
+}
+
+const STALE_THRESHOLD_MS = 4 * 60 * 60 * 1000 // 4 hours
+
+export function isSessionStale(state: string, lastActive: Date): boolean {
+  if (state === 'IDLE' || state === 'ORDER_PENDING') return false
+  return Date.now() - lastActive.getTime() > STALE_THRESHOLD_MS
 }
 
 export async function getSession(customerPhone: string, tenantId: string): Promise<BotSession> {
@@ -77,6 +85,7 @@ export async function getSession(customerPhone: string, tenantId: string): Promi
     state: row.state,
     cart,
     context,
+    lastActive: row.lastActive,
   }
 }
 
