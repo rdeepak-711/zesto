@@ -285,8 +285,14 @@ async function handleOwnerReply(body: string, ownerPhone: string, tenant: Tenant
       if (action === 1) {
         await db.order.update({ where: { id: order.id }, data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() } })
         const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
-        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\nWe'll notify you when it's ready.`)
-        await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Customer notified.`)
+        if (order.totalAmount > 0) {
+          const payUrl = `${APP_URL}/pay/${order.id}`
+          await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\n💳 Please complete your payment:\n${payUrl}\n\nWe'll start preparing once payment is received.`)
+          await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Payment link sent to customer.`)
+        } else {
+          await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\nWe'll notify you when it's ready.`)
+          await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Customer notified.`)
+        }
         await sendOwnerList(ownerPhone, tenant, page)
         return
       }

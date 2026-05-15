@@ -36,10 +36,18 @@ async function acceptOrder(orderId: string, formData: FormData) {
     data: { status: 'ACCEPTED', bakerNotifiedAt: new Date(), deliveryNote },
   })
   const deliveryLine = deliveryNote ? `\n📅 *Delivery:* ${deliveryNote}` : ''
-  await sendWhatsApp(
-    order.customerPhone,
-    `🎉 Your order has been *accepted*! The baker is now preparing it.${deliveryLine}\n\nType *track* anytime to check your order status. Thank you! 🎂`
-  )
+  if (order.totalAmount > 0) {
+    const payUrl = `${APP_URL}/pay/${orderId}`
+    await sendWhatsApp(
+      order.customerPhone,
+      `🎉 Your order has been *accepted*!${deliveryLine}\n\n💳 Please complete your payment:\n${payUrl}\n\nWe'll start preparing once payment is received.`
+    )
+  } else {
+    await sendWhatsApp(
+      order.customerPhone,
+      `🎉 Your order has been *accepted*! The baker is now preparing it.${deliveryLine}\n\nType *track* anytime to check your order status. Thank you! 🎂`
+    )
+  }
   revalidatePath(`/dashboard/orders/${orderId}`)
   redirect('/dashboard')
 }

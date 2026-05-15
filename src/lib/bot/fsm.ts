@@ -456,8 +456,8 @@ export function processMessage(input: BotInput): BotOutput {
     case 'AWAITING_CONFIRMATION': {
       if (m === 'yes' || m === 'confirm') {
         return {
-          reply: messages['payment_method_prompt'] ?? `💳 *How would you like to pay?*\n\n1️⃣ Pay online (UPI / Card / Netbanking)\n2️⃣ Cash on delivery\n\nReply with *1* or *2*`,
-          nextState: 'AWAITING_PAYMENT_METHOD', cart, context, placeOrder: false,
+          reply: messages['order_placed'] ?? '🎉 Order placed! We\'ll send you a payment link once confirmed.',
+          nextState: 'ORDER_PENDING', cart, context: { ...context, paymentMethod: 'ONLINE' }, placeOrder: true,
         }
       }
       if (m === 'cancel' || m === 'no') {
@@ -510,7 +510,7 @@ export function processMessage(input: BotInput): BotOutput {
 
     case 'AWAITING_CUSTOM_CONFIRM': {
       if (m === 'yes' || m === 'confirm') {
-        return { reply: messages['order_placed'] ?? '🎉 Order placed!', nextState: 'ORDER_PENDING', cart, context: { ...context, paymentMethod: 'ONLINE' }, placeOrder: true }
+        return { reply: messages['order_placed'] ?? '🎉 Order placed! We\'ll be in touch shortly.', nextState: 'ORDER_PENDING', cart, context: { ...context, paymentMethod: 'ONLINE' }, placeOrder: true }
       }
       if (m === 'edit') {
         return { reply: messages['custom_prompt'] ?? "✏️ Retype your request.", nextState: 'AWAITING_CUSTOM_DESCRIPTION', cart, context: { ...context, customDescription: undefined }, placeOrder: false }
