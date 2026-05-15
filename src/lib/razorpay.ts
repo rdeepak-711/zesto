@@ -6,14 +6,25 @@ export const razorpay = new Razorpay({
   key_secret: process.env.RAZORPAY_KEY_SECRET!,
 })
 
+type TenantCreds = { razorpayKeyId?: string | null; razorpayKeySecret?: string | null }
+
+export function getRazorpay(tenant: TenantCreds) {
+  return new Razorpay({
+    key_id: tenant.razorpayKeyId ?? process.env.RAZORPAY_KEY_ID!,
+    key_secret: tenant.razorpayKeySecret ?? process.env.RAZORPAY_KEY_SECRET!,
+  })
+}
+
 export function verifyPaymentSignature(
   orderId: string,
   paymentId: string,
-  signature: string
+  signature: string,
+  tenant?: TenantCreds
 ): boolean {
+  const secret = tenant?.razorpayKeySecret ?? process.env.RAZORPAY_KEY_SECRET!
   const body = `${orderId}|${paymentId}`
   const expected = crypto
-    .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET!)
+    .createHmac('sha256', secret)
     .update(body)
     .digest('hex')
   return expected === signature

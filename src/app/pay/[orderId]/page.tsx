@@ -53,7 +53,11 @@ export default async function PayPage({ params }: { params: Promise<{ orderId: s
                 totalAmount: order.totalAmount,
                 status: order.status,
               }}
-              config={{ bakeryName: tenant?.businessName ?? 'Store', logoUrl: tenant?.logoUrl ?? null }}
+              config={{
+                bakeryName: tenant?.businessName ?? 'Store',
+                logoUrl: tenant?.logoUrl ?? null,
+                razorpayKeyId: tenant?.razorpayKeyId ?? process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID ?? '',
+              }}
             />
           )}
         </div>

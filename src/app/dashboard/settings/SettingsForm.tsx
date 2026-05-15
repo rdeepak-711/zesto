@@ -14,6 +14,8 @@ type Tenant = {
   minOrderAmount: number
   deliveryDateEnabled?: boolean | null
   deliveryDateLabel?: string | null
+  razorpayKeyId?: string | null
+  razorpayKeySecret?: string | null
 }
 
 export default function SettingsForm({ tenant }: { tenant: Tenant }) {
@@ -26,6 +28,8 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
     minOrderAmount: (tenant.minOrderAmount / 100).toFixed(0),
     deliveryDateEnabled: tenant.deliveryDateEnabled ?? true,
     deliveryDateLabel: tenant.deliveryDateLabel ?? 'When would you like your order?',
+    razorpayKeyId: tenant.razorpayKeyId ?? '',
+    razorpayKeySecret: tenant.razorpayKeySecret ?? '',
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -134,6 +138,33 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
             placeholder="When would you like your order?"
           />
         </div>
+      </div>
+
+      {/* Integrations */}
+      <div className="border-t border-gray-100 pt-6 mt-6">
+        <h3 className="text-sm font-semibold text-gray-700 mb-1">Integrations</h3>
+        <p className="text-xs text-gray-400 mb-4">Your Razorpay credentials. Payments go directly to your account.</p>
+        <div className="grid grid-cols-2 gap-4">
+          <Field
+            label="Razorpay Key ID"
+            value={form.razorpayKeyId}
+            onChange={(v) => setForm((f) => ({ ...f, razorpayKeyId: v }))}
+            placeholder="rzp_live_..."
+          />
+          <div>
+            <label className="block text-xs font-semibold uppercase tracking-wide text-gray-600 mb-1.5">
+              Razorpay Key Secret
+            </label>
+            <input
+              type="password"
+              value={form.razorpayKeySecret}
+              onChange={(e) => setForm((f) => ({ ...f, razorpayKeySecret: e.target.value }))}
+              placeholder="••••••••••••••••"
+              className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
+            />
+          </div>
+        </div>
+        <p className="text-xs text-gray-400 mt-2">Get these from your <a href="https://dashboard.razorpay.com/app/keys" target="_blank" rel="noopener noreferrer" className="underline hover:text-gray-600">Razorpay dashboard</a> → Settings → API Keys.</p>
       </div>
 
       <div className="flex items-center gap-3 pt-1">

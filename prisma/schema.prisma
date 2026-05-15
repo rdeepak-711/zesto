@@ -31,6 +31,9 @@ model Tenant {
   openDays            String   @default("1,2,3,4,5,6") @db.VarChar(20)
   openTime            String   @default("09:00") @db.VarChar(5)
   closeTime           String   @default("21:00") @db.VarChar(5)
+  // Payment integration
+  razorpayKeyId       String?  @db.VarChar(100)
+  razorpayKeySecret   String?  @db.VarChar(200)
   // Social / web presence
   websiteUrl          String?  @db.VarChar(500)
   instagramUrl        String?  @db.VarChar(500)

@@ -12,6 +12,7 @@ export async function notifyBaker(
   totalAmount: number,
   customerPhone: string,
   bakerPhone: string,
+  fromNumber?: string,
 ) {
   const itemLines = cart
     .map((item) => {
@@ -31,5 +32,5 @@ export async function notifyBaker(
     `⏳ Awaiting payment (sent after you accept)\n\n` +
     `Reply *1* to accept or *2* to reject`
 
-  await sendWhatsApp(bakerPhone, message)
+  await sendWhatsApp(bakerPhone, message, fromNumber)
 }

@@ -9,15 +9,19 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Missing payment fields' }, { status: 400 })
   }
 
-  const isValid = verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature)
-  if (!isValid) {
-    return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 })
-  }
-
   // Find our order by Razorpay order ID
   const order = await db.order.findFirst({
     where: { paymentLinkId: razorpay_order_id },
   })
+
+  const tenant = order?.tenantId
+    ? await db.tenant.findUnique({ where: { id: order.tenantId }, select: { razorpayKeyId: true, razorpayKeySecret: true } })
+    : null
+
+  const isValid = verifyPaymentSignature(razorpay_order_id, razorpay_payment_id, razorpay_signature, tenant ?? undefined)
+  if (!isValid) {
+    return NextResponse.json({ error: 'Invalid payment signature' }, { status: 400 })
+  }
 
   if (!order) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })

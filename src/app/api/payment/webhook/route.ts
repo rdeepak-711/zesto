@@ -44,12 +44,14 @@ export async function POST(req: NextRequest) {
 
       await sendWhatsApp(
         order.customerPhone,
-        `💳 Payment received for order *#${shortId}*! We're now preparing your order. Thank you! 🎂`
+        `💳 Payment received for order *#${shortId}*! We're now preparing your order. Thank you! 🎂`,
+        tenant?.whatsappNumber ?? undefined
       )
       if (tenant) {
         await sendWhatsApp(
           tenant.ownerPhone,
-          `💰 Payment received for order #${shortId}. Amount: ₹${(order.totalAmount / 100).toFixed(0)}`
+          `💰 Payment received for order #${shortId}. Amount: ₹${(order.totalAmount / 100).toFixed(0)}`,
+          tenant.whatsappNumber
         )
       }
     }

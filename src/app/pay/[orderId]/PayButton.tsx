@@ -14,6 +14,7 @@ type Order = {
 type BusinessConfig = {
   bakeryName: string
   logoUrl: string | null
+  razorpayKeyId: string
 }
 
 export default function PayButton({ order, config }: { order: Order; config: BusinessConfig }) {
@@ -35,7 +36,7 @@ export default function PayButton({ order, config }: { order: Order; config: Bus
       if (!res.ok) throw new Error(data.error ?? 'Failed to create payment')
 
       const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        key: config.razorpayKeyId,
         amount: data.amount,
         currency: data.currency,
         name: config.bakeryName,

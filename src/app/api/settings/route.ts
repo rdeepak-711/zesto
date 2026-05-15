@@ -19,6 +19,7 @@ export async function PATCH(req: NextRequest) {
     'businessName', 'businessType', 'address', 'logoUrl', 'deliveryDateLabel',
     'timezone', 'openDays', 'openTime', 'closeTime',
     'websiteUrl', 'instagramUrl', 'facebookUrl',
+    'razorpayKeyId', 'razorpayKeySecret',
   ]
   const update: Record<string, string | number | boolean> = {}
   for (const key of stringFields) {

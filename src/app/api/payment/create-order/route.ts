@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { db } from '@/lib/db'
-import { razorpay } from '@/lib/razorpay'
+import { getRazorpay } from '@/lib/razorpay'
 
 export async function POST(req: NextRequest) {
   const { orderId } = await req.json()
@@ -21,8 +21,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Amount must be at least ₹1 (100 paise)' }, { status: 400 })
   }
 
+  const tenant = order.tenantId
+    ? await db.tenant.findUnique({ where: { id: order.tenantId }, select: { razorpayKeyId: true, razorpayKeySecret: true } })
+    : null
+
   try {
-    const rzpOrder = await razorpay.orders.create({
+    const rzpOrder = await getRazorpay(tenant ?? {}).orders.create({
       amount: amountPaise,
       currency: 'INR',
       receipt: order.id.slice(0, 40),
