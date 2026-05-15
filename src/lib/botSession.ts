@@ -38,6 +38,9 @@ export type BotContext = {
   // field collection — replaces selectedVariantName/selectedVariantDelta
   pendingFields?: FieldDef[]
   collectedFields?: FieldSelection[]
+  // order selection state (track / cancel list)
+  trackOrderIds?: string[]
+  cancelOrderIds?: string[]
 }
 
 export type BotSession = {

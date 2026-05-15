@@ -444,29 +444,77 @@ export async function POST(req: NextRequest) {
     }
   }
 
+  // ── Order selection (reply to track/cancel list) ──────────────────────────
+  const selNum = parseInt(m, 10)
+  if (!isNaN(selNum) && selNum >= 1 && (session.context.trackOrderIds || session.context.cancelOrderIds)) {
+    if (session.context.trackOrderIds && selNum <= session.context.trackOrderIds.length) {
+      const orderId = session.context.trackOrderIds[selNum - 1]
+      const order = await db.order.findUnique({ where: { id: orderId }, include: { items: true } })
+      const newCtx = { ...session.context, trackOrderIds: undefined }
+      await saveSession(customerPhone, session.state, session.cart, newCtx, tenant.id)
+      const reply = order
+        ? orderStatusMessage(order, messages)
+        : "Order not found. Type *track* to refresh."
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+      await sendWhatsApp(customerPhone, reply)
+      return new NextResponse('', { status: 200 })
+    }
+
+    if (session.context.cancelOrderIds && selNum <= session.context.cancelOrderIds.length) {
+      const orderId = session.context.cancelOrderIds[selNum - 1]
+      const order = await db.order.findUnique({ where: { id: orderId } })
+      const newCtx = { ...session.context, cancelOrderIds: undefined }
+      await saveSession(customerPhone, session.state, session.cart, newCtx, tenant.id)
+
+      let reply: string
+      if (!order) {
+        reply = "Order not found. Type *cancel order* to try again."
+      } else {
+        const shortId = order.id.slice(0, 8).toUpperCase()
+        if (order.status === 'PENDING') {
+          await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
+          reply = messages['cancel_confirmed'] ?? `✅ Order #${shortId} has been cancelled. Type *hi* to start a new order.`
+        } else {
+          await sendWhatsApp(
+            tenant.ownerPhone,
+            `⚠️ *Cancellation Request*\n\nCustomer ${customerPhone} wants to cancel order *#${shortId}*.\n\nReply *2* from the order detail to reject it.`
+          )
+          reply = messages['cancel_request_sent'] ?? `Your cancellation request for order *#${shortId}* has been sent. We'll confirm shortly.`
+        }
+      }
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+      await sendWhatsApp(customerPhone, reply)
+      return new NextResponse('', { status: 200 })
+    }
+  }
+
   // ── Order tracking ────────────────────────────────────────────────────────
   const trackTriggers = ['track', 'status', 'order status', 'my order', 'track order', 'where is my order']
   if (trackTriggers.includes(m)) {
-    const activeOrder = await db.order.findFirst({
-      where: { tenantId: tenant.id, customerPhone, status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
+    const allOrders = await db.order.findMany({
+      where: { tenantId: tenant.id, customerPhone },
       orderBy: { createdAt: 'desc' },
+      take: 10,
       include: { items: true },
     })
 
     let reply: string
-    if (!activeOrder) {
-      const lastOrder = await db.order.findFirst({
-        where: { tenantId: tenant.id, customerPhone },
-        orderBy: { createdAt: 'desc' },
-        include: { items: true },
-      })
-      if (lastOrder) {
-        reply = orderStatusMessage(lastOrder, messages)
-      } else {
-        reply = messages['track_no_order'] ?? "You don't have any active orders. Type *hi* to start a new order! 🛍️"
-      }
+    if (allOrders.length === 0) {
+      reply = messages['track_no_order'] ?? "You don't have any orders yet. Type *hi* to place one! 🛍️"
+    } else if (allOrders.length === 1) {
+      reply = orderStatusMessage(allOrders[0], messages)
     } else {
-      reply = orderStatusMessage(activeOrder, messages)
+      const statusEmoji: Record<string, string> = { PENDING: '🕐', ACCEPTED: '👨‍🍳', PAID: '💳', COMPLETED: '✅', REJECTED: '❌' }
+      const lines = allOrders.map((o, i) => {
+        const emoji = statusEmoji[o.status] ?? '📦'
+        const shortId = o.id.slice(0, 8).toUpperCase()
+        const date = o.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+        const total = o.totalAmount > 0 ? ` — ${formatPrice(o.totalAmount)}` : ''
+        return `${i + 1}. ${emoji} #${shortId}${total} (${date})`
+      })
+      reply = `📦 *Your Orders*\n\n${lines.join('\n')}\n\nReply with a number to see full details.`
+      const newCtx = { ...session.context, trackOrderIds: allOrders.map(o => o.id) }
+      await saveSession(customerPhone, session.state, session.cart, newCtx, tenant.id)
     }
 
     await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
@@ -476,33 +524,47 @@ export async function POST(req: NextRequest) {
 
   // ── Cancel order request ──────────────────────────────────────────────────
   if (m === 'cancel order') {
-    const activeOrder = await db.order.findFirst({
+    const activeOrders = await db.order.findMany({
       where: { tenantId: tenant.id, customerPhone, status: { in: ['PENDING', 'ACCEPTED', 'PAID'] } },
       orderBy: { createdAt: 'desc' },
     })
 
-    if (!activeOrder) {
+    if (activeOrders.length === 0) {
       const reply = messages['cancel_no_order'] ?? "No active order found to cancel. Type *hi* to start a new order."
       await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
       await sendWhatsApp(customerPhone, reply)
       return new NextResponse('', { status: 200 })
     }
 
-    const shortId = activeOrder.id.slice(0, 8).toUpperCase()
-    let reply: string
-
-    if (activeOrder.status === 'PENDING') {
-      await db.order.update({ where: { id: activeOrder.id }, data: { status: 'REJECTED' } })
-      reply = messages['cancel_confirmed'] ?? `✅ Order #${shortId} has been cancelled. Type *hi* to start a new order.`
-    } else {
-      // ACCEPTED or PAID — notify owner, can't auto-cancel
-      await sendWhatsApp(
-        tenant.ownerPhone,
-        `⚠️ *Cancellation Request*\n\nCustomer ${customerPhone} wants to cancel order *#${shortId}*.\n\nReply *2* from the order detail to reject it.`
-      )
-      reply = messages['cancel_request_sent'] ?? `Your cancellation request for order *#${shortId}* has been sent. We'll confirm shortly.`
+    if (activeOrders.length === 1) {
+      const order = activeOrders[0]
+      const shortId = order.id.slice(0, 8).toUpperCase()
+      let reply: string
+      if (order.status === 'PENDING') {
+        await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
+        reply = messages['cancel_confirmed'] ?? `✅ Order #${shortId} has been cancelled. Type *hi* to start a new order.`
+      } else {
+        await sendWhatsApp(
+          tenant.ownerPhone,
+          `⚠️ *Cancellation Request*\n\nCustomer ${customerPhone} wants to cancel order *#${shortId}*.\n\nReply *2* from the order detail to reject it.`
+        )
+        reply = messages['cancel_request_sent'] ?? `Your cancellation request for order *#${shortId}* has been sent. We'll confirm shortly.`
+      }
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+      await sendWhatsApp(customerPhone, reply)
+      return new NextResponse('', { status: 200 })
     }
 
+    // Multiple active orders — let customer choose
+    const lines = activeOrders.map((o, i) => {
+      const shortId = o.id.slice(0, 8).toUpperCase()
+      const date = o.createdAt.toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })
+      const total = o.totalAmount > 0 ? ` — ${formatPrice(o.totalAmount)}` : ''
+      return `${i + 1}. #${shortId}${total} (${date})`
+    })
+    const reply = `Which order would you like to cancel?\n\n${lines.join('\n')}\n\nReply with a number.`
+    const newCtx = { ...session.context, cancelOrderIds: activeOrders.map(o => o.id) }
+    await saveSession(customerPhone, session.state, session.cart, newCtx, tenant.id)
     await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply)
     return new NextResponse('', { status: 200 })
