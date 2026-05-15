@@ -141,8 +141,7 @@ function formatFieldPrompt(field: FieldDef, itemName: string, basePrice: number,
   if (field.type === 'select') {
     const lines = field.options.map((o, i) => {
       const total = basePrice + o.priceDelta
-      const delta = o.priceDelta !== 0 ? ` (+${formatPrice(o.priceDelta)})` : ''
-      return `${i + 1}. ${o.label} — ${formatPrice(total)}${delta}`
+      return `${i + 1}. ${o.label} — ${formatPrice(total)}`
     })
     return `Which *${field.name}* would you like for *${itemName}*?\n\n${lines.join('\n')}\n\n${messages['field_prompt_footer'] ?? 'Reply with a number to select.'}`
   }
