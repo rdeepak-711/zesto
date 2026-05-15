@@ -672,7 +672,6 @@ Rules:
         0,
         customerPhone,
         tenant.ownerPhone,
-        paymentMethod
       )
     } else if (output.cart.length > 0) {
       const cartTotal = output.cart.reduce((sum, i) => sum + itemTotal(i), 0)
@@ -708,7 +707,7 @@ Rules:
         })
       }
 
-      await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, paymentMethod)
+      await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone)
     }
 
     await resetSession(customerPhone, tenant.id)

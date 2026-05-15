@@ -11,7 +11,6 @@ export async function notifyBaker(
   totalAmount: number,
   customerPhone: string,
   bakerPhone: string,
-  paymentMethod: string = 'ONLINE'
 ) {
   const itemLines = cart
     .map((item) => {
@@ -20,12 +19,6 @@ export async function notifyBaker(
     })
     .join('\n')
 
-  const paymentLine = paymentMethod === 'COD'
-    ? `\n💵 *Payment: Cash on Delivery*`
-    : totalAmount > 0
-      ? `\n💳 Payment: Online`
-      : ''
-
   const shortId = orderId.slice(0, 8).toUpperCase()
 
   const message =
@@ -33,8 +26,9 @@ export async function notifyBaker(
     `ID: ${shortId}\n` +
     `📱 ${customerPhone}\n\n` +
     `${itemLines}\n\n` +
-    `*Total: ${formatPrice(totalAmount)}*${paymentLine}\n\n` +
-    `Type *orders* to manage`
+    `*Total: ${formatPrice(totalAmount)}*\n` +
+    `⏳ Awaiting payment (sent after you accept)\n\n` +
+    `Reply *1* to accept or *2* to reject`
 
   await sendWhatsApp(bakerPhone, message)
 }

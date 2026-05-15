@@ -204,8 +204,10 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                 ) : (
                   <div className="space-y-3">
                     {order.items.map((item) => {
-                      const fields: { name: string; value: string }[] = (() => { try { return JSON.parse(item.fieldsJson || '[]') } catch { return [] } })()
+                      const fields: { name: string; value: string; priceDelta?: number }[] = (() => { try { return JSON.parse(item.fieldsJson || '[]') } catch { return [] } })()
                       const fieldTags = fields.filter(f => f.value)
+                      const fieldDelta = fields.reduce((s, f) => s + (f.priceDelta ?? 0), 0)
+                      const unitPrice = item.price + fieldDelta
                       return (
                       <div key={item.id} className="flex items-start justify-between gap-3">
                         <div className="flex items-start gap-3 min-w-0">
@@ -231,11 +233,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                                 ))}
                               </div>
                             )}
-                            <p className="text-xs text-gray-400">{item.quantity} × {formatPrice(item.price)}</p>
+                            <p className="text-xs text-gray-400">{item.quantity} × {formatPrice(unitPrice)}</p>
                           </div>
                         </div>
                         <span className="text-sm font-semibold text-gray-900 flex-shrink-0">
-                          {formatPrice(item.price * item.quantity)}
+                          {formatPrice(unitPrice * item.quantity)}
                         </span>
                       </div>
                       )
