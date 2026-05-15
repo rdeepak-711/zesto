@@ -28,11 +28,6 @@ export default async function PayPage({ params }: { params: Promise<{ orderId: s
         </div>
 
         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 p-6">
-          <div className="mb-5">
-            <p className="text-sm text-gray-500">Paying for</p>
-            <p className="font-semibold text-gray-900">{order.customerName}</p>
-          </div>
-
           {order.status === 'REJECTED' ? (
             <div className="text-center py-6">
               <p className="text-red-600 font-semibold">This order was rejected.</p>
@@ -63,9 +58,19 @@ export default async function PayPage({ params }: { params: Promise<{ orderId: s
           )}
         </div>
 
-        <p className="text-center text-xs text-gray-400 mt-6">
-          Having trouble? Contact us on WhatsApp.
-        </p>
+        {tenant?.whatsappNumber && (
+          <p className="text-center text-xs text-gray-400 mt-6">
+            Having trouble?{' '}
+            <a
+              href={`https://wa.me/${tenant.whatsappNumber.replace('+', '')}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="underline hover:text-gray-600"
+            >
+              Contact us on WhatsApp
+            </a>
+          </p>
+        )}
       </div>
     </div>
   )

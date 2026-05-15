@@ -1,5 +1,6 @@
 import { sendWhatsApp } from '@/lib/twilio'
 import type { CartItem } from '@/lib/botSession'
+import { itemTotal } from '@/lib/bot/fsm'
 
 function formatPrice(paise: number) {
   return `₹${(paise / 100).toFixed(0)}`
@@ -15,7 +16,7 @@ export async function notifyBaker(
   const itemLines = cart
     .map((item) => {
       const fieldStr = (item.fields ?? []).filter(f => f.value).map(f => f.value).join(', ')
-      return `• ${item.name}${fieldStr ? ` (${fieldStr})` : ''} × ${item.quantity} = ${formatPrice(item.price * item.quantity)}`
+      return `• ${item.name}${fieldStr ? ` (${fieldStr})` : ''} × ${item.quantity} = ${formatPrice(itemTotal(item))}`
     })
     .join('\n')
 
