@@ -73,6 +73,7 @@ export type BotInput = {
   discountCodes?: DiscountCode[]
   deliveryDateEnabled?: boolean
   deliveryDateLabel?: string
+  businessName?: string
 }
 
 export type BotOutput = {
@@ -206,6 +207,7 @@ export function processMessage(input: BotInput): BotOutput {
     categoryFields = [], rules = [], minOrderAmount = 0, discountCodes = [],
     deliveryDateEnabled = true,
     deliveryDateLabel,
+    businessName = '',
   } = input
   const m = message.trim().toLowerCase()
   const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -221,7 +223,7 @@ export function processMessage(input: BotInput): BotOutput {
 
   // Global commands
   if (m === 'hi' || m === 'hello' || m === 'start') {
-    return { reply: msg(messages, 'welcome', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart: [], context: {}, placeOrder: false }
+    return { reply: msg(messages, 'welcome', { businessName, categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart: [], context: {}, placeOrder: false }
   }
   if (m === 'menu') {
     return { reply: msg(messages, 'menu_header', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart: [], context: {}, placeOrder: false }
@@ -237,7 +239,7 @@ export function processMessage(input: BotInput): BotOutput {
 
   switch (state) {
     case 'IDLE': {
-      return { reply: msg(messages, 'welcome', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart, context, placeOrder: false }
+      return { reply: msg(messages, 'welcome', { businessName, categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart, context, placeOrder: false }
     }
 
     case 'AWAITING_CATEGORY': {
@@ -525,7 +527,7 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     default: {
-      return { reply: msg(messages, 'welcome', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart: [], context: {}, placeOrder: false }
+      return { reply: msg(messages, 'welcome', { businessName, categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart: [], context: {}, placeOrder: false }
     }
   }
 }

@@ -508,7 +508,7 @@ export async function POST(req: NextRequest) {
     const sortedCats = categories.sort((a, b) => a.sortOrder - b.sortOrder)
     const catList = sortedCats.map((c, i) => `${i + 1}. ${c.name}`).join('\n')
     const reply = messages['welcome']
-      ? messages['welcome'].replace('{categories}', catList)
+      ? messages['welcome'].replace('{businessName}', tenant.businessName).replace('{categories}', catList)
       : `Welcome back! 👋 Type *hi* to start a new order.`
     await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply)
@@ -601,6 +601,7 @@ Rules:
     categoryFields,
     deliveryDateEnabled: tenant.deliveryDateEnabled,
     deliveryDateLabel: tenant.deliveryDateLabel,
+    businessName: tenant.businessName,
   })
 
   if (output.placeOrder) {
