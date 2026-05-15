@@ -735,6 +735,7 @@ Rules:
         customerPhone,
         tenant.ownerPhone,
       )
+      await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
     } else if (output.cart.length > 0) {
       const cartTotal = output.cart.reduce((sum, i) => sum + itemTotal(i), 0)
       const discountAmount = output.context.appliedDiscount ?? 0
@@ -770,6 +771,7 @@ Rules:
       }
 
       await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone)
+      await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
     }
 
     await resetSession(customerPhone, tenant.id)
