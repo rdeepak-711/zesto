@@ -4,6 +4,7 @@ import { getSession, saveSession, resetSession, isSessionStale } from '@/lib/bot
 import { processMessage, type BotState, itemTotal } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker } from '@/lib/bakerNotify'
+import { validateRequest } from 'twilio'
 import type { Tenant } from '@prisma/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
@@ -357,6 +358,17 @@ async function handleOwnerReply(body: string, ownerPhone: string, tenant: Tenant
 
 export async function POST(req: NextRequest) {
   const formData = await req.formData()
+
+  // Verify Twilio signature — reject spoofed requests
+  const signature = req.headers.get('x-twilio-signature') ?? ''
+  const webhookUrl = `${APP_URL}/api/webhook/whatsapp`
+  const params: Record<string, string> = {}
+  formData.forEach((value, key) => { params[key] = value.toString() })
+  const authToken = process.env.TWILIO_AUTH_TOKEN!
+  if (!validateRequest(authToken, signature, webhookUrl, params)) {
+    return new NextResponse('Forbidden', { status: 403 })
+  }
+
   const body = formData.get('Body')?.toString().trim() ?? ''
   const rawFrom = formData.get('From')?.toString() ?? ''
   const rawTo = formData.get('To')?.toString() ?? ''

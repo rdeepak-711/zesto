@@ -25,6 +25,20 @@ export async function POST(req: NextRequest) {
     ? await db.tenant.findUnique({ where: { id: order.tenantId }, select: { razorpayKeyId: true, razorpayKeySecret: true } })
     : null
 
+  // Reuse existing Razorpay order if already created — prevents duplicate orders
+  if (order.paymentLinkId) {
+    try {
+      const existing = await getRazorpay(tenant ?? {}).orders.fetch(order.paymentLinkId)
+      return NextResponse.json({
+        order_id: existing.id,
+        amount: existing.amount,
+        currency: existing.currency,
+      })
+    } catch {
+      // Razorpay order not found (e.g. wrong account) — fall through to create new
+    }
+  }
+
   try {
     const rzpOrder = await getRazorpay(tenant ?? {}).orders.create({
       amount: amountPaise,
@@ -36,9 +50,9 @@ export async function POST(req: NextRequest) {
       },
     })
 
-    // Store Razorpay order ID on our order
-    await db.order.update({
-      where: { id: orderId },
+    // Only update if paymentLinkId is still null (guards against race condition)
+    await db.order.updateMany({
+      where: { id: orderId, paymentLinkId: null },
       data: { paymentLinkId: rzpOrder.id as string },
     })
 

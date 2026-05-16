@@ -3,6 +3,11 @@ import { db } from '@/lib/db'
 import { bootstrapTenant } from '../../../../prisma/bootstrapTenant'
 
 export async function POST(req: NextRequest) {
+  const adminSecret = process.env.ADMIN_SECRET
+  if (!adminSecret || req.headers.get('x-admin-secret') !== adminSecret) {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
+  }
+
   const { businessName, businessType, ownerPhone, whatsappNumber, currency } = await req.json()
 
   if (!businessName?.trim() || !ownerPhone?.trim() || !whatsappNumber?.trim()) {

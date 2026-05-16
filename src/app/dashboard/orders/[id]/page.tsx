@@ -2,6 +2,7 @@ import { db } from '@/lib/db'
 import { notFound, redirect } from 'next/navigation'
 import { revalidatePath } from 'next/cache'
 import { sendWhatsApp } from '@/lib/twilio'
+import { getAuthFromCookies } from '@/lib/auth'
 import Link from 'next/link'
 import SendPaymentButton from './SendPaymentButton'
 
@@ -28,7 +29,10 @@ function formatDateTime(d: Date) {
 
 async function acceptOrder(orderId: string, formData: FormData) {
   'use server'
-  const order = await db.order.findUnique({ where: { id: orderId } })
+  const auth = await getAuthFromCookies()
+  if (!auth) return
+  const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId }, select: { whatsappNumber: true } })
+  const order = await db.order.findUnique({ where: { id: orderId, tenantId: auth.tenantId } })
   if (!order || order.status !== 'PENDING') return
   const deliveryNote = (formData.get('deliveryNote') as string | null)?.trim() || order.deliveryNote || null
   await db.order.update({
@@ -36,16 +40,19 @@ async function acceptOrder(orderId: string, formData: FormData) {
     data: { status: 'ACCEPTED', bakerNotifiedAt: new Date(), deliveryNote },
   })
   const deliveryLine = deliveryNote ? `\n📅 *Delivery:* ${deliveryNote}` : ''
+  const from = tenant?.whatsappNumber
   if (order.totalAmount > 0) {
     const payUrl = `${APP_URL}/pay/${orderId}`
     await sendWhatsApp(
       order.customerPhone,
-      `🎉 Your order has been *accepted*!${deliveryLine}\n\n💳 Please complete your payment:\n${payUrl}\n\nWe'll start preparing once payment is received.`
+      `🎉 Your order has been *accepted*!${deliveryLine}\n\n💳 Please complete your payment:\n${payUrl}\n\nWe'll start preparing once payment is received.`,
+      from
     )
   } else {
     await sendWhatsApp(
       order.customerPhone,
-      `🎉 Your order has been *accepted*! The baker is now preparing it.${deliveryLine}\n\nType *track* anytime to check your order status. Thank you! 🎂`
+      `🎉 Your order has been *accepted*! The baker is now preparing it.${deliveryLine}\n\nType *track* anytime to check your order status. Thank you! 🎂`,
+      from
     )
   }
   revalidatePath(`/dashboard/orders/${orderId}`)
@@ -54,23 +61,34 @@ async function acceptOrder(orderId: string, formData: FormData) {
 
 async function rejectOrder(orderId: string) {
   'use server'
-  const order = await db.order.findUnique({ where: { id: orderId } })
+  const auth = await getAuthFromCookies()
+  if (!auth) return
+  const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId }, select: { whatsappNumber: true } })
+  const order = await db.order.findUnique({ where: { id: orderId, tenantId: auth.tenantId } })
   if (!order || order.status !== 'PENDING') return
   await db.order.update({ where: { id: orderId }, data: { status: 'REJECTED' } })
-  await sendWhatsApp(order.customerPhone, `We're sorry, your order could not be processed at this time. Please try again later.`)
+  await sendWhatsApp(
+    order.customerPhone,
+    `We're sorry, your order could not be processed at this time. Please try again later.`,
+    tenant?.whatsappNumber
+  )
   revalidatePath(`/dashboard/orders/${orderId}`)
   redirect('/dashboard')
 }
 
 async function completeOrder(orderId: string) {
   'use server'
-  const order = await db.order.findUnique({ where: { id: orderId } })
+  const auth = await getAuthFromCookies()
+  if (!auth) return
+  const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId }, select: { whatsappNumber: true } })
+  const order = await db.order.findUnique({ where: { id: orderId, tenantId: auth.tenantId } })
   if (!order || !['ACCEPTED', 'PAID'].includes(order.status)) return
   await db.order.update({ where: { id: orderId }, data: { status: 'COMPLETED' } })
   const shortId = order.id.slice(0, 8).toUpperCase()
   await sendWhatsApp(
     order.customerPhone,
-    `✅ Your order #${shortId} is ready! Thank you for choosing us 🎂\n\nWe'd love your feedback! Reply with a number:\n\n5 - Excellent\n4 - Good\n3 - OK\n2 - Below average\n1 - Poor`
+    `✅ Your order #${shortId} is ready! Thank you for choosing us 🎂\n\nWe'd love your feedback! Reply with a number:\n\n5 - Excellent\n4 - Good\n3 - OK\n2 - Below average\n1 - Poor`,
+    tenant?.whatsappNumber
   )
   revalidatePath(`/dashboard/orders/${orderId}`)
   redirect('/dashboard')
@@ -82,14 +100,18 @@ async function sendPaymentLink(
   _formData: FormData
 ): Promise<{ ok: boolean; error?: string }> {
   'use server'
-  const order = await db.order.findUnique({ where: { id: orderId } })
+  const auth = await getAuthFromCookies()
+  if (!auth) return { ok: false, error: 'Unauthorized' }
+  const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId }, select: { whatsappNumber: true } })
+  const order = await db.order.findUnique({ where: { id: orderId, tenantId: auth.tenantId } })
   if (!order || order.status !== 'ACCEPTED' || order.totalAmount <= 0)
     return { ok: false, error: 'Order not eligible for payment' }
   const payUrl = `${APP_URL}/pay/${orderId}`
   try {
     await sendWhatsApp(
       order.customerPhone,
-      `💳 Payment request for your order #${order.id.slice(0, 8).toUpperCase()}\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`
+      `💳 Payment request for your order #${order.id.slice(0, 8).toUpperCase()}\n\nAmount: ₹${(order.totalAmount / 100).toFixed(0)}\n\nPay securely here:\n${payUrl}\n\nSupports UPI, cards, netbanking & wallets.`,
+      tenant?.whatsappNumber
     )
     revalidatePath(`/dashboard/orders/${orderId}`)
     return { ok: true }
@@ -100,8 +122,10 @@ async function sendPaymentLink(
 
 export default async function OrderDetailPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params
+  const auth = await getAuthFromCookies()
+  if (!auth) notFound()
   const order = await db.order.findUnique({
-    where: { id },
+    where: { id, tenantId: auth.tenantId },
     include: { items: { include: { menuItem: { select: { imageUrl: true } } } } },
   })
   if (!order) notFound()

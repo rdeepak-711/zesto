@@ -27,13 +27,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Order not found' }, { status: 404 })
   }
 
-  await db.order.update({
-    where: { id: order.id },
-    data: {
-      status: 'PAID',
-      paymentLinkUrl: razorpay_payment_id,
-    },
+  // Guard against replay and race: only transition from ACCEPTED state
+  const { count } = await db.order.updateMany({
+    where: { id: order.id, status: 'ACCEPTED' },
+    data: { status: 'PAID', paymentLinkUrl: razorpay_payment_id },
   })
+
+  if (count === 0) {
+    // Already paid, completed, or rejected — treat as success so client doesn't retry
+    return NextResponse.json({ success: true, orderId: order.id })
+  }
 
   return NextResponse.json({ success: true, orderId: order.id })
 }
