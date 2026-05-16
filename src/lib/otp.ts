@@ -21,7 +21,7 @@ export async function sendOtp(phone: string, tenantId: string): Promise<void> {
   await sendWhatsApp(phone, `Your Zesto verification code: *${code}*\nExpires in 10 minutes.`)
 }
 
-export async function verifyOtp(phone: string, code: string): Promise<{ valid: boolean; tenantId?: string; debug?: object }> {
+export async function verifyOtp(phone: string, code: string): Promise<{ valid: boolean; tenantId?: string }> {
   const sessions = await db.otpSession.findMany({
     where: { phone, used: false, expiresAt: { gt: new Date() } },
     orderBy: { createdAt: 'desc' },
@@ -29,7 +29,7 @@ export async function verifyOtp(phone: string, code: string): Promise<{ valid: b
   })
 
   if (sessions.length === 0) {
-    return { valid: false, debug: { reason: 'no_sessions', phone } }
+    return { valid: false }
   }
 
   for (const session of sessions) {
@@ -40,5 +40,5 @@ export async function verifyOtp(phone: string, code: string): Promise<{ valid: b
     }
   }
 
-  return { valid: false, debug: { reason: 'no_match', sessionCount: sessions.length, phone, codeLen: code.length } }
+  return { valid: false }
 }

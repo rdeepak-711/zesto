@@ -24,7 +24,6 @@ export async function POST(req: NextRequest) {
 
   if (!tenant) return NextResponse.json({ ok: true })
 
-  // Always send OTP to the tenant's stored ownerPhone
   await sendOtp(tenant.ownerPhone, tenant.id)
-  return NextResponse.json({ ok: true, otpPhone: tenant.ownerPhone })
+  return NextResponse.json({ ok: true })
 }

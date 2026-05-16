@@ -10,14 +10,17 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'Phone and code required' }, { status: 400 })
   }
 
-  const { valid, tenantId } = await verifyOtp(phone, code)
-  if (!valid || !tenantId) {
+  // Resolve ownerPhone from submitted phone (which may be whatsappNumber for demo accounts)
+  const tenant = await db.tenant.findFirst({
+    where: { OR: [{ ownerPhone: phone }, { whatsappNumber: phone }], active: true },
+  })
+  if (!tenant) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
   }
 
-  // phone here is the ownerPhone OTP was sent to — just verify tenant is still active
-  const tenant = await db.tenant.findFirst({ where: { id: tenantId, active: true } })
-  if (!tenant) {
+  // OTP sessions are always stored against ownerPhone
+  const { valid, tenantId } = await verifyOtp(tenant.ownerPhone, code)
+  if (!valid || !tenantId) {
     return NextResponse.json({ error: 'Invalid or expired code' }, { status: 401 })
   }
 

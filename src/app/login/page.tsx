@@ -10,7 +10,6 @@ function LoginForm() {
   const [phone, setPhone] = useState('')
   const [code, setCode] = useState('')
   const [step, setStep] = useState<'phone' | 'otp'>('phone')
-  const [otpPhone, setOtpPhone] = useState('')
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState('')
 
@@ -33,7 +32,6 @@ function LoginForm() {
       return
     }
 
-    if (data.otpPhone) setOtpPhone(data.otpPhone)
     setStep('otp')
   }
 
@@ -45,7 +43,7 @@ function LoginForm() {
     const res = await fetch('/api/auth/verify-otp', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phone: otpPhone || phone, code }),
+      body: JSON.stringify({ phone, code }),
     })
 
     setLoading(false)
@@ -61,7 +59,7 @@ function LoginForm() {
       <div className="w-full max-w-sm bg-white rounded-2xl shadow-md p-8">
         <h1 className="text-2xl font-bold text-gray-900 mb-1">Zesto Dashboard</h1>
         <p className="text-sm text-gray-500 mb-6">
-          {step === 'phone' ? 'Enter your owner phone number' : `Enter the code sent to ${otpPhone || phone}`}
+          {step === 'phone' ? 'Enter your owner phone number' : `Enter the code sent to your WhatsApp`}
         </p>
 
         {error && (

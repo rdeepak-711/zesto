@@ -12,6 +12,9 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: 'name, categoryId and price required' }, { status: 400 })
   }
 
+  const category = await db.menuCategory.findFirst({ where: { id: categoryId, tenantId: auth.tenantId } })
+  if (!category) return NextResponse.json({ error: 'Category not found' }, { status: 404 })
+
   const item = await db.menuItem.create({
     data: {
       tenantId: auth.tenantId,

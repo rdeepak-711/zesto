@@ -10,7 +10,16 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json()
   const rule = await db.botRule.updateMany({
     where: { id: Number(id), tenantId: auth.tenantId },
-    data: body,
+    data: {
+      ...(body.label !== undefined && { label: body.label }),
+      ...(body.state !== undefined && { state: body.state }),
+      ...(body.condition !== undefined && { condition: body.condition }),
+      ...(body.matchText !== undefined && { matchText: body.matchText }),
+      ...(body.reply !== undefined && { reply: body.reply }),
+      ...(body.nextState !== undefined && { nextState: body.nextState }),
+      ...(body.sortOrder !== undefined && { sortOrder: Number(body.sortOrder) }),
+      ...(body.active !== undefined && { active: Boolean(body.active) }),
+    },
   })
   if (rule.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ ok: true })

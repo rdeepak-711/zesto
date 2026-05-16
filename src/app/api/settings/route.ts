@@ -7,7 +7,10 @@ export async function GET() {
   if (!auth) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
 
   const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId } })
-  return NextResponse.json(tenant)
+  if (!tenant) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  // Never expose the payment secret to the browser
+  const { razorpayKeySecret: _secret, ...safe } = tenant
+  return NextResponse.json(safe)
 }
 
 export async function PATCH(req: NextRequest) {
@@ -33,5 +36,6 @@ export async function PATCH(req: NextRequest) {
     data: update,
   })
 
-  return NextResponse.json(tenant)
+  const { razorpayKeySecret: _secret, ...safe } = tenant
+  return NextResponse.json(safe)
 }

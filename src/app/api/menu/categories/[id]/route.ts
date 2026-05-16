@@ -10,7 +10,11 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const body = await req.json()
   const result = await db.menuCategory.updateMany({
     where: { id, tenantId: auth.tenantId },
-    data: body,
+    data: {
+      ...(body.name !== undefined && { name: body.name }),
+      ...(body.sortOrder !== undefined && { sortOrder: Number(body.sortOrder) }),
+      ...(body.active !== undefined && { active: Boolean(body.active) }),
+    },
   })
   if (result.count === 0) return NextResponse.json({ error: 'Not found' }, { status: 404 })
   return NextResponse.json({ ok: true })

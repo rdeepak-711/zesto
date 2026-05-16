@@ -34,7 +34,8 @@ function buildNudge(state: string, cart: { name: string; quantity: number; price
 
 export async function GET(req: NextRequest) {
   const authHeader = req.headers.get('authorization')
-  if (process.env.CRON_SECRET && authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
+  const cronSecret = process.env.CRON_SECRET
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
 
@@ -51,6 +52,9 @@ export async function GET(req: NextRequest) {
   let skipped = 0
   const errors: string[] = []
 
+  // Cache tenant WhatsApp numbers to avoid repeated DB hits
+  const tenantNumberCache = new Map<string, string>()
+
   for (const session of staleSessions) {
     const context = JSON.parse(session.contextJson || '{}')
 
@@ -62,8 +66,17 @@ export async function GET(req: NextRequest) {
     const cart = JSON.parse(session.cartJson || '[]')
     const message = buildNudge(session.state, cart)
 
+    let fromNumber: string | undefined
+    if (session.tenantId) {
+      if (!tenantNumberCache.has(session.tenantId)) {
+        const t = await db.tenant.findUnique({ where: { id: session.tenantId }, select: { whatsappNumber: true } })
+        if (t) tenantNumberCache.set(session.tenantId, t.whatsappNumber)
+      }
+      fromNumber = tenantNumberCache.get(session.tenantId)
+    }
+
     try {
-      await sendWhatsApp(session.customerPhone, message)
+      await sendWhatsApp(session.customerPhone, message, fromNumber)
 
       await db.botSession.update({
         where: { id: session.id },

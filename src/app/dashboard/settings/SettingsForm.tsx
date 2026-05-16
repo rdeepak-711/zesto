@@ -20,6 +20,7 @@ type Tenant = {
 
 export default function SettingsForm({ tenant }: { tenant: Tenant }) {
   const router = useRouter()
+  const hasExistingSecret = Boolean(tenant.razorpayKeyId) // key ID presence implies secret is set
   const [form, setForm] = useState({
     businessName: tenant.businessName,
     businessType: tenant.businessType,
@@ -29,7 +30,7 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
     deliveryDateEnabled: tenant.deliveryDateEnabled ?? true,
     deliveryDateLabel: tenant.deliveryDateLabel ?? 'When would you like your order?',
     razorpayKeyId: tenant.razorpayKeyId ?? '',
-    razorpayKeySecret: tenant.razorpayKeySecret ?? '',
+    razorpayKeySecret: '', // never pre-filled — secret is never sent to browser
   })
   const [saving, setSaving] = useState(false)
   const [saved, setSaved] = useState(false)
@@ -38,14 +39,17 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
     e.preventDefault()
     setSaving(true)
     setSaved(false)
+    const payload: Record<string, unknown> = {
+      ...form,
+      minOrderAmount: Math.round(Number(form.minOrderAmount || 0) * 100),
+      deliveryDateEnabled: form.deliveryDateEnabled,
+    }
+    // Only send secret if user typed a new value
+    if (!form.razorpayKeySecret) delete payload.razorpayKeySecret
     await fetch('/api/settings', {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        minOrderAmount: Math.round(Number(form.minOrderAmount || 0) * 100),
-        deliveryDateEnabled: form.deliveryDateEnabled,
-      }),
+      body: JSON.stringify(payload),
     })
     setSaving(false)
     setSaved(true)
@@ -159,7 +163,7 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
               type="password"
               value={form.razorpayKeySecret}
               onChange={(e) => setForm((f) => ({ ...f, razorpayKeySecret: e.target.value }))}
-              placeholder="••••••••••••••••"
+              placeholder={hasExistingSecret ? '(already set — paste new value to update)' : '••••••••••••••••'}
               className="w-full rounded-lg border border-gray-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400"
             />
           </div>
