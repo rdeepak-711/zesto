@@ -1,168 +1,155 @@
 /**
- * Multi-step enquiry questionnaire for Phoenix Photo Studio.
- * Handles photo frames, acrylic products, and open-ended enquiries.
+ * Conversational enquiry handler for Phoenix Photo Studio.
  *
- * State flow:
- *   IDLE → (welcome) → AWAITING_CATEGORY
- *   AWAITING_CATEGORY → detect product → PF_ / AC_ / OTHER_ states
- *   On completion → save Custom Order, notify owner, reset to IDLE
+ * Philosophy: customer leads, bot follows.
+ * - No forced welcome. Bot reacts to the customer's first message.
+ * - Detect product intent from natural language, never force numbered menus.
+ * - Collect name + date organically at the end of each flow.
+ * - Save a clean summary to the order notes & notify owner.
  */
 
 import { db } from '@/lib/db'
-import { saveSession, resetSession, type BotContext, type CartItem } from '@/lib/botSession'
+import { type BotContext } from '@/lib/botSession'
 import { sendWhatsApp } from '@/lib/twilio'
 import { imageSize } from 'image-size'
 
-// ── Photo frame size table ────────────────────────────────────────────────────
+// ── Frame size table ──────────────────────────────────────────────────────────
 
 const FRAME_SIZES = [
-  { name: '4×6 inches',  price: 200,  aspectW: 4,  aspectH: 6  },
-  { name: '5×7 inches',  price: 270,  aspectW: 5,  aspectH: 7  },
-  { name: '6×8 inches',  price: 300,  aspectW: 6,  aspectH: 8  },
-  { name: '8×8 inches',  price: 350,  aspectW: 8,  aspectH: 8  },
-  { name: '5×10 inches', price: 400,  aspectW: 5,  aspectH: 10 },
-  { name: '8×10 inches', price: 400,  aspectW: 8,  aspectH: 10 },
-  { name: '10×12 inches',price: 550,  aspectW: 10, aspectH: 12 },
-  { name: '12×8 inches', price: 450,  aspectW: 12, aspectH: 8  },
-  { name: '12×15 inches',price: 750,  aspectW: 12, aspectH: 15 },
-  { name: '12×18 inches',price: 900,  aspectW: 12, aspectH: 18 },
-  { name: '15×10 inches',price: 650,  aspectW: 15, aspectH: 10 },
-  { name: '12×20 inches',price: 1100, aspectW: 12, aspectH: 20 },
-  { name: '16×20 inches',price: 1300, aspectW: 16, aspectH: 20 },
-  { name: '16×24 inches',price: 1800, aspectW: 16, aspectH: 24 },
-  { name: '20×24 inches',price: 2000, aspectW: 20, aspectH: 24 },
-  { name: '20×30 inches',price: 2500, aspectW: 20, aspectH: 30 },
+  { name: '4×6',  label: '4×6 inches',  price: 200,  w: 4,  h: 6  },
+  { name: '5×7',  label: '5×7 inches',  price: 270,  w: 5,  h: 7  },
+  { name: '6×8',  label: '6×8 inches',  price: 300,  w: 6,  h: 8  },
+  { name: '8×8',  label: '8×8 inches',  price: 350,  w: 8,  h: 8  },
+  { name: '5×10', label: '5×10 inches', price: 400,  w: 5,  h: 10 },
+  { name: '8×10', label: '8×10 inches', price: 400,  w: 8,  h: 10 },
+  { name: '10×12',label: '10×12 inches',price: 550,  w: 10, h: 12 },
+  { name: '12×8', label: '12×8 inches', price: 450,  w: 12, h: 8  },
+  { name: '12×15',label: '12×15 inches',price: 750,  w: 12, h: 15 },
+  { name: '12×18',label: '12×18 inches',price: 900,  w: 12, h: 18 },
+  { name: '15×10',label: '15×10 inches',price: 650,  w: 15, h: 10 },
+  { name: '12×20',label: '12×20 inches',price: 1100, w: 12, h: 20 },
+  { name: '16×20',label: '16×20 inches',price: 1300, w: 16, h: 20 },
+  { name: '16×24',label: '16×24 inches',price: 1800, w: 16, h: 24 },
+  { name: '20×24',label: '20×24 inches',price: 2000, w: 20, h: 24 },
+  { name: '20×30',label: '20×30 inches',price: 2500, w: 20, h: 30 },
 ]
 
-const FRAME_SIZE_LIST = FRAME_SIZES
-  .map((s, i) => `${i + 1}. ${s.name} — ₹${s.price}`)
-  .join('\n')
+// ── Intent detection ──────────────────────────────────────────────────────────
 
-// ── Acrylic clock shapes ──────────────────────────────────────────────────────
+const GREETING_PATTERNS = /^(hi+|hello|hey|hii+|hai|good\s*(morning|evening|afternoon|night)|namaste|sup|yo|howdy)\W*$/i
 
-const CLOCK_SHAPES = [
-  'Circle', 'Square (rounded)', 'Rectangle', 'Cushion',
-  'Scalloped', 'Arch', 'Baroque', 'Diamond', 'Multi-panel (4 photos)',
-]
-
-const CLOCK_SHAPE_LIST = CLOCK_SHAPES.map((s, i) => `${i + 1}. ${s}`).join('\n')
-
-// ── Acrylic lamp shapes ───────────────────────────────────────────────────────
-
-const LAMP_SHAPES = ['Heart', 'Arch', 'Oval', 'House', 'Rectangle', 'Round']
-const LAMP_SHAPE_LIST = LAMP_SHAPES.map((s, i) => `${i + 1}. ${s}`).join('\n')
-
-// ── Context type extensions ───────────────────────────────────────────────────
-
-export type EnquiryAnswers = {
-  product?: string
-  size?: string
-  quantity?: string
-  shape?: string
-  lampType?: string
-  photoUrl?: string
-  details?: string
-  suggestedSize?: string
+function isGreeting(text: string): boolean {
+  return GREETING_PATTERNS.test(text.trim())
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-
-function parseChoice(body: string, max: number): number | null {
-  const n = parseInt(body.trim(), 10)
-  return n >= 1 && n <= max ? n : null
+function detectProduct(text: string, enquiryKeywords: string): 'photo_frame' | 'acrylic' | 'other' {
+  const m = text.toLowerCase()
+  const pfKeywords = enquiryKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+  if (pfKeywords.some(kw => m.includes(kw))) return 'photo_frame'
+  if (m.includes('acrylic')) return 'acrylic'
+  return 'other'
 }
 
-/** Find best matching frame size by aspect ratio. Returns null if the selected size is fine. */
-async function checkPhotoAspectRatio(
+/** Try to extract a frame size from free text. Returns matched size or null. */
+function extractFrameSize(text: string): typeof FRAME_SIZES[0] | null {
+  const m = text.toLowerCase().replace(/\s/g, '').replace(/"/g, '').replace(/inch(es)?/g, '')
+  for (const s of FRAME_SIZES) {
+    const variants = [
+      s.name.toLowerCase().replace(/×/g, 'x'),
+      s.name.toLowerCase().replace(/×/g, '×'),
+      s.name.toLowerCase().replace(/×/g, ' x ').replace(/\s/g, ''),
+      `${s.w}x${s.h}`, `${s.h}x${s.w}`,
+    ]
+    if (variants.some(v => m.includes(v.replace(/\s/g, '')))) return s
+  }
+  return null
+}
+
+/** Best-fit frame by photo aspect ratio. Returns null if selected size is already fine (within 15%). */
+async function suggestFrameFromPhoto(
   mediaUrl: string,
-  twilioAccountSid: string,
-  twilioAuthToken: string,
-  selectedSizeName: string,
-): Promise<string | null> {
+  accountSid: string,
+  authToken: string,
+  selectedSize?: typeof FRAME_SIZES[0],
+): Promise<{ bestFit: typeof FRAME_SIZES[0]; isNew: boolean } | null> {
   try {
     const res = await fetch(mediaUrl, {
-      headers: { Authorization: 'Basic ' + Buffer.from(`${twilioAccountSid}:${twilioAuthToken}`).toString('base64') },
+      headers: { Authorization: 'Basic ' + Buffer.from(`${accountSid}:${authToken}`).toString('base64') },
     })
     if (!res.ok) return null
-    const buf = Buffer.from(await res.arrayBuffer())
-    const { width, height } = imageSize(buf)
+    const { width, height } = imageSize(Buffer.from(await res.arrayBuffer()))
     if (!width || !height) return null
 
     const photoRatio = width / height
-    const selected = FRAME_SIZES.find(s => s.name === selectedSizeName)
-    if (!selected) return null
-
-    const selectedRatio = selected.aspectW / selected.aspectH
-    const diff = Math.abs(photoRatio - selectedRatio) / selectedRatio
-
-    // If within 15% of selected ratio, it's fine
-    if (diff <= 0.15) return null
-
-    // Find best matching frame
     const best = FRAME_SIZES.reduce((prev, cur) => {
-      const curDiff = Math.abs(photoRatio - cur.aspectW / cur.aspectH)
-      const prevDiff = Math.abs(photoRatio - prev.aspectW / prev.aspectH)
-      return curDiff < prevDiff ? cur : prev
+      const cDiff = Math.abs(photoRatio - cur.w / cur.h)
+      const pDiff = Math.abs(photoRatio - prev.w / prev.h)
+      return cDiff < pDiff ? cur : prev
     })
 
-    if (best.name === selectedSizeName) return null
-    return best.name
+    if (selectedSize) {
+      const selectedRatio = selectedSize.w / selectedSize.h
+      const diff = Math.abs(photoRatio - selectedRatio) / selectedRatio
+      if (diff <= 0.15) return null // close enough
+      return { bestFit: best, isNew: best.name !== selectedSize.name }
+    }
+    return { bestFit: best, isNew: true }
   } catch {
     return null
   }
 }
 
-/** Save completed enquiry as a Custom Order and notify owner. */
-async function saveEnquiry(params: {
+// ── Summary builder ───────────────────────────────────────────────────────────
+
+function buildSummary(product: string, answers: Record<string, string>): string {
+  const lines: string[] = [`Product: ${product}`]
+  if (answers.size)      lines.push(`Size: ${answers.size}`)
+  if (answers.quantity)  lines.push(`Quantity: ${answers.quantity}`)
+  if (answers.shape)     lines.push(`Shape: ${answers.shape}`)
+  if (answers.details)   lines.push(`Details: ${answers.details}`)
+  if (answers.photoUrl)  lines.push(`Photo: ${answers.photoUrl}`)
+  if (answers.suggestedSize) lines.push(`⚠️ Photo fits better in: ${answers.suggestedSize}`)
+  if (answers.date)      lines.push(`Needed by: ${answers.date}`)
+  if (answers.name)      lines.push(`Customer name: ${answers.name}`)
+  return lines.join('\n')
+}
+
+/** Save custom order with summary notes and notify owner. */
+async function saveEnquiryAndNotify(params: {
   tenantId: string
   customerPhone: string
   ownerPhone: string
   whatsappNumber: string
-  answers: EnquiryAnswers
-  originalBody: string
+  product: string
+  answers: Record<string, string>
 }) {
-  const { tenantId, customerPhone, ownerPhone, whatsappNumber, answers } = params
+  const { tenantId, customerPhone, ownerPhone, whatsappNumber, product, answers } = params
+  const notes = buildSummary(product, answers)
 
-  const customCat = await db.menuCategory.findFirst({
-    where: { tenantId, isCustom: true },
-  })
+  const customCat = await db.menuCategory.findFirst({ where: { tenantId, isCustom: true } })
   const customItem = customCat
     ? await db.menuItem.findFirst({ where: { tenantId, categoryId: customCat.id } })
     : null
+  if (!customItem) return
 
-  // Build human-readable notes from answers
-  const noteLines: string[] = []
-  if (answers.product)    noteLines.push(`Product: ${answers.product}`)
-  if (answers.size)       noteLines.push(`Size: ${answers.size}`)
-  if (answers.quantity)   noteLines.push(`Qty: ${answers.quantity}`)
-  if (answers.shape)      noteLines.push(`Shape: ${answers.shape}`)
-  if (answers.lampType)   noteLines.push(`Lamp type: ${answers.lampType}`)
-  if (answers.photoUrl)   noteLines.push(`Photo: ${answers.photoUrl}`)
-  if (answers.suggestedSize) noteLines.push(`⚠️ Suggested size: ${answers.suggestedSize}`)
-  if (answers.details)    noteLines.push(`Details: ${answers.details}`)
-
-  const notes = noteLines.join('\n')
-
-  const prevOrder = await db.order.findFirst({
+  const prev = await db.order.findFirst({
     where: { tenantId, customerPhone },
     orderBy: { createdAt: 'desc' },
     select: { customerName: true },
   })
 
-  if (!customItem) return
-
   const order = await db.order.create({
     data: {
       tenantId,
       customerPhone,
-      customerName: prevOrder?.customerName ?? 'WhatsApp Enquiry',
+      customerName: answers.name || prev?.customerName || 'WhatsApp Enquiry',
       totalAmount: 0,
       notes,
       paymentMethod: 'ONLINE',
       items: {
         create: [{
           menuItemId: customItem.id,
-          name: answers.product ?? 'Enquiry',
+          name: product,
           price: 0,
           quantity: parseInt(answers.quantity ?? '1', 10) || 1,
           fieldsJson: '[]',
@@ -171,18 +158,21 @@ async function saveEnquiry(params: {
     },
   })
 
-  // Notify owner with full details
   const shortId = order.id.slice(0, 8).toUpperCase()
   const ownerMsg =
-    `📩 *New Enquiry #${shortId}*\n\n` +
-    `📱 ${customerPhone}\n\n` +
-    noteLines.join('\n') +
-    `\n\nReply to this customer on WhatsApp to confirm details & pricing.`
+    `📩 *New Enquiry #${shortId}*\n📱 ${customerPhone}\n\n` +
+    notes +
+    `\n\nReply to confirm details & pricing.`
 
   await sendWhatsApp(ownerPhone, ownerMsg, whatsappNumber)
 }
 
-// ── Main handler ──────────────────────────────────────────────────────────────
+// ── Context type ──────────────────────────────────────────────────────────────
+
+export type EnquiryContext = BotContext & {
+  enquiryProduct?: string
+  enquiryAnswers?: Record<string, string>
+}
 
 export type EnquiryHandlerParams = {
   tenantId: string
@@ -190,10 +180,10 @@ export type EnquiryHandlerParams = {
   ownerPhone: string
   whatsappNumber: string
   body: string
-  mediaUrl?: string     // Twilio MediaUrl0 if customer sent a photo
-  numMedia: number      // Twilio NumMedia field
+  mediaUrl?: string
+  numMedia: number
   state: string
-  context: BotContext & { enquiryAnswers?: EnquiryAnswers }
+  context: EnquiryContext
   messages: Record<string, string>
   twilioAccountSid: string
   twilioAuthToken: string
@@ -202,382 +192,338 @@ export type EnquiryHandlerParams = {
 type EnquiryResult = {
   reply: string
   nextState: string
-  nextContext: BotContext & { enquiryAnswers?: EnquiryAnswers }
-  done: boolean         // true = save order + reset session after sending reply
+  nextContext: EnquiryContext
+  done: boolean
 }
 
-export async function handleEnquiryState(params: EnquiryHandlerParams): Promise<EnquiryResult | null> {
-  const { body, state, context, mediaUrl, numMedia } = params
-  const m = body.trim().toLowerCase()
-  const answers: EnquiryAnswers = context.enquiryAnswers ?? {}
+// ── All enquiry states the webhook should intercept ───────────────────────────
+export const ENQUIRY_STATES = [
+  'AWAITING_CATEGORY',
+  'ENQUIRY_LISTENING',
+  'PF_AWAITING_SIZE',
+  'PF_AWAITING_PHOTO',
+  'PF_AWAITING_DATE',
+  'PF_AWAITING_NAME',
+  'AC_AWAITING_DETAILS',
+  'AC_AWAITING_DATE',
+  'AC_AWAITING_NAME',
+  'OTHER_AWAITING_DETAILS',
+  'OTHER_AWAITING_DATE',
+  'OTHER_AWAITING_NAME',
+]
 
-  // ── AWAITING_CATEGORY: route to product flow ──────────────────────────────
-  if (state === 'AWAITING_CATEGORY') {
-    const pfKeywords = (params.messages['enquiry_keywords'] ?? 'frame,photo frame')
-      .split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
-    const isPhotoFrame = pfKeywords.some(kw => m.includes(kw))
-    const isAcrylic = m.includes('acrylic')
+// ── Main handler ──────────────────────────────────────────────────────────────
 
-    if (isPhotoFrame) {
+export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<EnquiryResult | null> {
+  const { body, state, context } = p
+  const m = body.trim()
+  const answers: Record<string, string> = context.enquiryAnswers ?? {}
+  const product = context.enquiryProduct ?? ''
+  const keywords = p.messages['enquiry_keywords'] ?? 'frame,photo frame,acrylic'
+
+  // ── IDLE: first message from customer ─────────────────────────────────────
+  // Called when state === 'IDLE' and enquiry_mode is on.
+  if (state === 'IDLE') {
+    if (isGreeting(m)) {
       return {
-        reply: `📐 *Photo Frames* — here are our sizes:\n\n${FRAME_SIZE_LIST}\n\nWhich size would you like? (reply with the number or the size name)`,
+        reply: `Hey! 👋 What can we help you with today?`,
+        nextState: 'ENQUIRY_LISTENING',
+        nextContext: { ...context, enquiryAnswers: {} },
+        done: false,
+      }
+    }
+    // Has intent — fall through to AWAITING_CATEGORY logic with same message
+    return handleEnquiryState({ ...p, state: 'AWAITING_CATEGORY' })
+  }
+
+  // ── AWAITING_CATEGORY / ENQUIRY_LISTENING: detect what they want ──────────
+  if (state === 'AWAITING_CATEGORY' || state === 'ENQUIRY_LISTENING') {
+    const detected = detectProduct(m, keywords)
+
+    if (detected === 'photo_frame') {
+      // Check if they already mentioned a size
+      const sizeMatch = extractFrameSize(m)
+      if (sizeMatch) {
+        // Check if they also sent a photo
+        if (p.numMedia > 0 && p.mediaUrl) {
+          const suggestion = await suggestFrameFromPhoto(p.mediaUrl, p.twilioAccountSid, p.twilioAuthToken, sizeMatch)
+          let reply = `Got it! A *${sizeMatch.label}* frame`
+          const updatedAnswers: Record<string, string> = { ...answers, size: sizeMatch.label, photoUrl: p.mediaUrl }
+          if (suggestion?.isNew) {
+            reply += ` — though based on your photo, a *${suggestion.bestFit.label}* might actually be a better fit. We'll confirm with you!`
+            updatedAnswers.suggestedSize = suggestion.bestFit.label
+          } else {
+            reply += ` — photo looks great for that size!`
+          }
+          reply += `\n\nWhen do you need it by?`
+          return {
+            reply,
+            nextState: 'PF_AWAITING_DATE',
+            nextContext: { ...context, enquiryProduct: 'Photo Frame', enquiryAnswers: updatedAnswers },
+            done: false,
+          }
+        }
+        return {
+          reply: `*${sizeMatch.label}* — perfect choice! 📸 Do you have the photo ready to share? Send it here if you do, or just let us know and we'll sort it out.`,
+          nextState: 'PF_AWAITING_PHOTO',
+          nextContext: { ...context, enquiryProduct: 'Photo Frame', enquiryAnswers: { ...answers, size: sizeMatch.label } },
+          done: false,
+        }
+      }
+
+      // No size mentioned — ask naturally
+      return {
+        reply: `Sure! We do frames from 4×6 all the way up to 20×30 inches. Did you have a size in mind, or would you like to share the photo first so we can suggest the right fit?`,
         nextState: 'PF_AWAITING_SIZE',
-        nextContext: { ...context, enquiryAnswers: { product: 'Photo Frame' } },
+        nextContext: { ...context, enquiryProduct: 'Photo Frame', enquiryAnswers: answers },
         done: false,
       }
     }
 
-    if (isAcrylic) {
+    if (detected === 'acrylic') {
       return {
-        reply: `🎨 We offer these acrylic products:\n\n1. 🕐 Acrylic Wall Clock\n2. ✂️ Acrylic Photo Cutout\n3. 💡 Acrylic Night Lamp\n4. 🖼️ Acrylic Print\n\nWhich one are you interested in? (reply with a number)`,
-        nextState: 'AC_AWAITING_SUBTYPE',
-        nextContext: { ...context, enquiryAnswers: { product: 'Acrylic' } },
+        reply: `We do beautiful personalised acrylic pieces — wall clocks with your photo, life-size cutouts, glowing night lamps, and flat prints. What did you have in mind?`,
+        nextState: 'AC_AWAITING_DETAILS',
+        nextContext: { ...context, enquiryProduct: 'Acrylic', enquiryAnswers: answers },
         done: false,
       }
     }
 
-    // Other — ask for full details
+    // Other
     return {
-      reply: `🙏 We'd love to help! Please share full details of what you're looking for — product type, size, occasion, any special requirements.`,
+      reply: `Tell us more! What are you looking for — size, occasion, any details you have in mind would really help.`,
       nextState: 'OTHER_AWAITING_DETAILS',
-      nextContext: { ...context, enquiryAnswers: {} },
+      nextContext: { ...context, enquiryProduct: 'Other Enquiry', enquiryAnswers: answers },
       done: false,
     }
   }
 
-  // ── PHOTO FRAME flow ──────────────────────────────────────────────────────
-
+  // ── PHOTO FRAME: size step ────────────────────────────────────────────────
   if (state === 'PF_AWAITING_SIZE') {
-    // Try numbered choice first
-    const choice = parseChoice(m, FRAME_SIZES.length)
-    let matched: typeof FRAME_SIZES[0] | undefined
-
-    if (choice !== null) {
-      matched = FRAME_SIZES[choice - 1]
-    } else {
-      // Try name match
-      matched = FRAME_SIZES.find(s => m.includes(s.name.toLowerCase().replace(' inches', '').replace('×', 'x').replace('×', '×')))
-      if (!matched) {
-        matched = FRAME_SIZES.find(s => {
-          const normalized = s.name.toLowerCase().replace(' inches', '')
-          return m.replace('x', '×').includes(normalized) || m.includes(normalized.replace('×', 'x'))
-        })
-      }
-    }
-
-    if (!matched) {
-      return {
-        reply: `Please pick a size from the list (reply with 1–${FRAME_SIZES.length}):\n\n${FRAME_SIZE_LIST}`,
-        nextState: 'PF_AWAITING_SIZE',
-        nextContext: context,
-        done: false,
-      }
-    }
-
-    return {
-      reply: `✅ *${matched.name}* — ₹${matched.price}\n\nHow many frames do you need?`,
-      nextState: 'PF_AWAITING_QUANTITY',
-      nextContext: { ...context, enquiryAnswers: { ...answers, size: matched.name } },
-      done: false,
-    }
-  }
-
-  if (state === 'PF_AWAITING_QUANTITY') {
-    const qty = parseInt(m, 10)
-    if (isNaN(qty) || qty < 1 || qty > 100) {
-      return {
-        reply: `How many frames do you need? (please enter a number)`,
-        nextState: 'PF_AWAITING_QUANTITY',
-        nextContext: context,
-        done: false,
-      }
-    }
-
-    return {
-      reply: `Got it — ${qty} frame${qty > 1 ? 's' : ''} 👍\n\n📸 Please share the photo you'd like to frame, or type *skip* to share it later.`,
-      nextState: 'PF_AWAITING_PHOTO',
-      nextContext: { ...context, enquiryAnswers: { ...answers, quantity: String(qty) } },
-      done: false,
-    }
-  }
-
-  if (state === 'PF_AWAITING_PHOTO') {
-    let photoUrl: string | undefined
-    let suggestedSize: string | undefined
-
-    if (numMedia > 0 && mediaUrl) {
-      photoUrl = mediaUrl
-      // Check aspect ratio against selected size
-      const suggestion = await checkPhotoAspectRatio(
-        mediaUrl,
-        params.twilioAccountSid,
-        params.twilioAuthToken,
-        answers.size ?? '',
-      )
+    // Maybe they sent a photo instead
+    if (p.numMedia > 0 && p.mediaUrl) {
+      const suggestion = await suggestFrameFromPhoto(p.mediaUrl, p.twilioAccountSid, p.twilioAuthToken)
+      const updatedAnswers: Record<string, string> = { ...answers, photoUrl: p.mediaUrl }
+      let reply: string
       if (suggestion) {
-        suggestedSize = suggestion
+        updatedAnswers.size = suggestion.bestFit.label
+        reply = `Based on your photo, a *${suggestion.bestFit.label}* frame would be a great fit! 👌 When do you need it by?`
+      } else {
+        reply = `Got the photo! 📸 When do you need it by?`
+      }
+      return {
+        reply,
+        nextState: 'PF_AWAITING_DATE',
+        nextContext: { ...context, enquiryAnswers: updatedAnswers },
+        done: false,
       }
     }
 
-    const updatedAnswers: EnquiryAnswers = { ...answers, photoUrl, suggestedSize }
+    const sizeMatch = extractFrameSize(m)
+    if (sizeMatch) {
+      return {
+        reply: `*${sizeMatch.label}* — great! 📸 Do you have the photo ready? Send it here or we can follow up later.`,
+        nextState: 'PF_AWAITING_PHOTO',
+        nextContext: { ...context, enquiryAnswers: { ...answers, size: sizeMatch.label } },
+        done: false,
+      }
+    }
 
-    await saveEnquiry({
-      tenantId: params.tenantId,
-      customerPhone: params.customerPhone,
-      ownerPhone: params.ownerPhone,
-      whatsappNumber: params.whatsappNumber,
-      answers: updatedAnswers,
-      originalBody: body,
+    // Can't parse size — try to help
+    const lm = m.toLowerCase()
+    if (lm.includes('not sure') || lm.includes('don\'t know') || lm.includes("don't know") || lm.includes('no idea')) {
+      return {
+        reply: `No worries! Share your photo here and we'll suggest the perfect size for you. 📸`,
+        nextState: 'PF_AWAITING_PHOTO',
+        nextContext: { ...context, enquiryAnswers: answers },
+        done: false,
+      }
+    }
+
+    return {
+      reply: `We have sizes from 4×6 up to 20×30 inches. Which size were you thinking? (or just share your photo and we'll suggest the best fit!)`,
+      nextState: 'PF_AWAITING_SIZE',
+      nextContext: context,
+      done: false,
+    }
+  }
+
+  // ── PHOTO FRAME: photo step ───────────────────────────────────────────────
+  if (state === 'PF_AWAITING_PHOTO') {
+    const updatedAnswers = { ...answers }
+
+    if (p.numMedia > 0 && p.mediaUrl) {
+      updatedAnswers.photoUrl = p.mediaUrl
+      const currentSize = answers.size ? FRAME_SIZES.find(s => s.label === answers.size) : undefined
+      const suggestion = await suggestFrameFromPhoto(p.mediaUrl, p.twilioAccountSid, p.twilioAuthToken, currentSize)
+
+      let reply = `Got the photo!`
+      if (suggestion?.isNew) {
+        updatedAnswers.suggestedSize = suggestion.bestFit.label
+        if (!answers.size) {
+          updatedAnswers.size = suggestion.bestFit.label
+          reply += ` Based on your photo, a *${suggestion.bestFit.label}* frame would look great.`
+        } else {
+          reply += ` Just a heads up — your photo might fit better in a *${suggestion.bestFit.label}* frame. We'll confirm when the owner reaches out.`
+        }
+      }
+
+      reply += ` When do you need it by?`
+      return {
+        reply,
+        nextState: 'PF_AWAITING_DATE',
+        nextContext: { ...context, enquiryAnswers: updatedAnswers },
+        done: false,
+      }
+    }
+
+    // No photo — they typed something
+    if (m.toLowerCase() === 'skip' || m.toLowerCase().includes('later') || m.toLowerCase().includes('share later')) {
+      return {
+        reply: `No problem, you can share it later! When do you need the frame by?`,
+        nextState: 'PF_AWAITING_DATE',
+        nextContext: { ...context, enquiryAnswers: updatedAnswers },
+        done: false,
+      }
+    }
+
+    // They might be describing the photo
+    updatedAnswers.details = (updatedAnswers.details ? updatedAnswers.details + '; ' : '') + m
+    return {
+      reply: `Got it! When do you need it by?`,
+      nextState: 'PF_AWAITING_DATE',
+      nextContext: { ...context, enquiryAnswers: updatedAnswers },
+      done: false,
+    }
+  }
+
+  // ── PHOTO FRAME: date step ────────────────────────────────────────────────
+  if (state === 'PF_AWAITING_DATE') {
+    return {
+      reply: `And your name please? So we know who it's for. 😊`,
+      nextState: 'PF_AWAITING_NAME',
+      nextContext: { ...context, enquiryAnswers: { ...answers, date: m } },
+      done: false,
+    }
+  }
+
+  // ── PHOTO FRAME: name step → done ─────────────────────────────────────────
+  if (state === 'PF_AWAITING_NAME') {
+    const name = m.split(' ')[0] // first word as name
+    const finalAnswers = { ...answers, name: m }
+
+    await saveEnquiryAndNotify({
+      tenantId: p.tenantId,
+      customerPhone: p.customerPhone,
+      ownerPhone: p.ownerPhone,
+      whatsappNumber: p.whatsappNumber,
+      product: 'Photo Frame',
+      answers: finalAnswers,
     })
 
-    let reply = `🙏 Thank you! We've received your enquiry for a *${answers.size}* photo frame (${answers.quantity ?? '1'} piece).`
-    if (suggestedSize) {
-      reply += `\n\n💡 *Heads up:* Based on your photo's dimensions, a *${suggestedSize}* frame might be a better fit — we'll confirm with you!`
-    }
-    reply += `\n\nThe owner will reach out to you shortly to confirm details. 😊`
+    const sizeNote = answers.suggestedSize
+      ? ` We'll also check if a *${answers.suggestedSize}* might be a better fit for your photo.`
+      : ''
 
-    return { reply, nextState: 'IDLE', nextContext: {}, done: true }
+    return {
+      reply: `Thank you, ${name}! 🙏 We've noted your enquiry for${answers.size ? ` a *${answers.size}*` : ' a'} photo frame${answers.date ? ` needed by ${answers.date}` : ''}.${sizeNote}\n\nThe owner will reach out to confirm everything shortly. 😊`,
+      nextState: 'IDLE',
+      nextContext: {},
+      done: true,
+    }
   }
 
-  // ── ACRYLIC: sub-type selection ───────────────────────────────────────────
+  // ── ACRYLIC: details step ─────────────────────────────────────────────────
+  if (state === 'AC_AWAITING_DETAILS') {
+    const updatedAnswers: Record<string, string> = { ...answers, details: m }
 
-  if (state === 'AC_AWAITING_SUBTYPE') {
-    const choice = parseChoice(m, 4)
-    if (!choice) {
-      return {
-        reply: `Please pick one:\n\n1. 🕐 Acrylic Wall Clock\n2. ✂️ Acrylic Photo Cutout\n3. 💡 Acrylic Night Lamp\n4. 🖼️ Acrylic Print`,
-        nextState: 'AC_AWAITING_SUBTYPE',
-        nextContext: context,
-        done: false,
-      }
-    }
+    // If they also sent a photo, save the URL
+    if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
 
-    const subTypes: Record<number, { label: string; state: string; reply: string }> = {
-      1: {
-        label: 'Acrylic Wall Clock',
-        state: 'AC_CLOCK_AWAITING_SHAPE',
-        reply: `🕐 *Acrylic Photo Wall Clock* — ₹1100 (10in) · ₹1400 (12in) · ₹1700 (16in)\n\nChoose a shape:\n\n${CLOCK_SHAPE_LIST}\n\nReply with a number.`,
-      },
-      2: {
-        label: 'Acrylic Photo Cutout',
-        state: 'AC_CUTOUT_AWAITING_SIZE',
-        reply: `✂️ *Acrylic Photo Cutout*\n\nChoose size:\n\n1. Large (12×8 in) — ₹1300\n2. Small (6×8 in) — ₹700`,
-      },
-      3: {
-        label: 'Acrylic Night Lamp',
-        state: 'AC_LAMP_AWAITING_TYPE',
-        reply: `💡 *Acrylic Night Lamp* — ₹600\n\nChoose style:\n\n1. Engraving (photo etched into acrylic — elegant glow)\n2. Color Print (full color photo — vibrant)\n\nWhich do you prefer?`,
-      },
-      4: {
-        label: 'Acrylic Print',
-        state: 'AC_PRINT_AWAITING_SIZE',
-        reply: `🖼️ *Acrylic Print (4mm)*\n\nWhat size would you like? (e.g. A4, A3, 8×10 in, or describe your requirement)`,
-      },
-    }
-
-    const sub = subTypes[choice]
     return {
-      reply: sub.reply,
-      nextState: sub.state,
-      nextContext: { ...context, enquiryAnswers: { ...answers, product: sub.label } },
+      reply: `Lovely! When do you need it by?`,
+      nextState: 'AC_AWAITING_DATE',
+      nextContext: { ...context, enquiryAnswers: updatedAnswers },
       done: false,
     }
   }
 
-  // ── ACRYLIC WALL CLOCK ────────────────────────────────────────────────────
-
-  if (state === 'AC_CLOCK_AWAITING_SHAPE') {
-    const choice = parseChoice(m, CLOCK_SHAPES.length)
-    if (!choice) {
-      return {
-        reply: `Please pick a shape (1–${CLOCK_SHAPES.length}):\n\n${CLOCK_SHAPE_LIST}`,
-        nextState: 'AC_CLOCK_AWAITING_SHAPE',
-        nextContext: context,
-        done: false,
-      }
-    }
-    const shape = CLOCK_SHAPES[choice - 1]
+  // ── ACRYLIC: date step ────────────────────────────────────────────────────
+  if (state === 'AC_AWAITING_DATE') {
     return {
-      reply: `✅ *${shape}* shape selected!\n\nWhat size would you like?\n\n1. 10 inch — ₹1100\n2. 12 inch — ₹1400\n3. 16 inch — ₹1700`,
-      nextState: 'AC_CLOCK_AWAITING_SIZE',
-      nextContext: { ...context, enquiryAnswers: { ...answers, shape } },
+      reply: `And your name please?`,
+      nextState: 'AC_AWAITING_NAME',
+      nextContext: { ...context, enquiryAnswers: { ...answers, date: m } },
       done: false,
     }
   }
 
-  if (state === 'AC_CLOCK_AWAITING_SIZE') {
-    const sizeMap: Record<number, string> = { 1: '10 inch — ₹1100', 2: '12 inch — ₹1400', 3: '16 inch — ₹1700' }
-    const choice = parseChoice(m, 3)
-    if (!choice) {
-      return {
-        reply: `Please pick a size:\n\n1. 10 inch — ₹1100\n2. 12 inch — ₹1400\n3. 16 inch — ₹1700`,
-        nextState: 'AC_CLOCK_AWAITING_SIZE',
-        nextContext: context,
-        done: false,
-      }
-    }
-    return {
-      reply: `Got it! 📸 Please share the photo for your clock, or type *skip* if you'll share it later.`,
-      nextState: 'AC_CLOCK_AWAITING_PHOTO',
-      nextContext: { ...context, enquiryAnswers: { ...answers, size: sizeMap[choice] } },
-      done: false,
-    }
-  }
+  // ── ACRYLIC: name step → done ─────────────────────────────────────────────
+  if (state === 'AC_AWAITING_NAME') {
+    const name = m.split(' ')[0]
+    const finalAnswers = { ...answers, name: m }
 
-  if (state === 'AC_CLOCK_AWAITING_PHOTO') {
-    const photoUrl = (numMedia > 0 && mediaUrl) ? mediaUrl : undefined
-    const updatedAnswers: EnquiryAnswers = { ...answers, photoUrl }
-
-    await saveEnquiry({
-      tenantId: params.tenantId,
-      customerPhone: params.customerPhone,
-      ownerPhone: params.ownerPhone,
-      whatsappNumber: params.whatsappNumber,
-      answers: updatedAnswers,
-      originalBody: body,
+    await saveEnquiryAndNotify({
+      tenantId: p.tenantId,
+      customerPhone: p.customerPhone,
+      ownerPhone: p.ownerPhone,
+      whatsappNumber: p.whatsappNumber,
+      product: product || 'Acrylic',
+      answers: finalAnswers,
     })
 
-    const reply = `🙏 Thank you! We've received your enquiry for an *Acrylic Wall Clock* (${answers.shape}, ${answers.size}).\n\nThe owner will reach out shortly to confirm. 😊`
-    return { reply, nextState: 'IDLE', nextContext: {}, done: true }
-  }
-
-  // ── ACRYLIC CUTOUT ────────────────────────────────────────────────────────
-
-  if (state === 'AC_CUTOUT_AWAITING_SIZE') {
-    const sizeMap: Record<number, string> = { 1: 'Large (12×8 in) — ₹1300', 2: 'Small (6×8 in) — ₹700' }
-    const choice = parseChoice(m, 2)
-    if (!choice) {
-      return {
-        reply: `Please choose:\n\n1. Large (12×8 in) — ₹1300\n2. Small (6×8 in) — ₹700`,
-        nextState: 'AC_CUTOUT_AWAITING_SIZE',
-        nextContext: context,
-        done: false,
-      }
-    }
     return {
-      reply: `Got it! 📸 Please share the photo for the cutout, or type *skip* to share later.`,
-      nextState: 'AC_CUTOUT_AWAITING_PHOTO',
-      nextContext: { ...context, enquiryAnswers: { ...answers, size: sizeMap[choice] } },
-      done: false,
+      reply: `Thank you, ${name}! 🙏 We've noted your enquiry${answers.date ? ` — needed by ${answers.date}` : ''}.\n\nThe owner will get back to you shortly to confirm the design and details. 😊`,
+      nextState: 'IDLE',
+      nextContext: {},
+      done: true,
     }
   }
 
-  if (state === 'AC_CUTOUT_AWAITING_PHOTO') {
-    const photoUrl = (numMedia > 0 && mediaUrl) ? mediaUrl : undefined
-    await saveEnquiry({
-      tenantId: params.tenantId,
-      customerPhone: params.customerPhone,
-      ownerPhone: params.ownerPhone,
-      whatsappNumber: params.whatsappNumber,
-      answers: { ...answers, photoUrl },
-      originalBody: body,
-    })
-    const reply = `🙏 Thank you! Enquiry received for an *Acrylic Photo Cutout* (${answers.size}).\n\nThe owner will reach out shortly. 😊`
-    return { reply, nextState: 'IDLE', nextContext: {}, done: true }
-  }
-
-  // ── ACRYLIC NIGHT LAMP ────────────────────────────────────────────────────
-
-  if (state === 'AC_LAMP_AWAITING_TYPE') {
-    const typeMap: Record<number, string> = { 1: 'Engraving', 2: 'Color Print' }
-    const choice = parseChoice(m, 2)
-    if (!choice) {
-      return {
-        reply: `Please pick a style:\n\n1. Engraving (elegant glow)\n2. Color Print (vibrant colors)`,
-        nextState: 'AC_LAMP_AWAITING_TYPE',
-        nextContext: context,
-        done: false,
-      }
-    }
-    return {
-      reply: `Great choice! 🌟 Choose a shape:\n\n${LAMP_SHAPE_LIST}\n\nReply with a number.`,
-      nextState: 'AC_LAMP_AWAITING_SHAPE',
-      nextContext: { ...context, enquiryAnswers: { ...answers, lampType: typeMap[choice] } },
-      done: false,
-    }
-  }
-
-  if (state === 'AC_LAMP_AWAITING_SHAPE') {
-    const choice = parseChoice(m, LAMP_SHAPES.length)
-    if (!choice) {
-      return {
-        reply: `Please pick a shape (1–${LAMP_SHAPES.length}):\n\n${LAMP_SHAPE_LIST}`,
-        nextState: 'AC_LAMP_AWAITING_SHAPE',
-        nextContext: context,
-        done: false,
-      }
-    }
-    const shape = LAMP_SHAPES[choice - 1]
-    return {
-      reply: `✅ *${shape}* shape! 📸 Please share the photo for the lamp, or type *skip* to share later.`,
-      nextState: 'AC_LAMP_AWAITING_PHOTO',
-      nextContext: { ...context, enquiryAnswers: { ...answers, shape } },
-      done: false,
-    }
-  }
-
-  if (state === 'AC_LAMP_AWAITING_PHOTO') {
-    const photoUrl = (numMedia > 0 && mediaUrl) ? mediaUrl : undefined
-    await saveEnquiry({
-      tenantId: params.tenantId,
-      customerPhone: params.customerPhone,
-      ownerPhone: params.ownerPhone,
-      whatsappNumber: params.whatsappNumber,
-      answers: { ...answers, photoUrl },
-      originalBody: body,
-    })
-    const reply = `🙏 Thank you! Enquiry received for an *Acrylic Night Lamp* (${answers.lampType}, ${answers.shape} shape).\n\nThe owner will reach out shortly. 😊`
-    return { reply, nextState: 'IDLE', nextContext: {}, done: true }
-  }
-
-  // ── ACRYLIC PRINT ─────────────────────────────────────────────────────────
-
-  if (state === 'AC_PRINT_AWAITING_SIZE') {
-    if (m.length < 2) {
-      return {
-        reply: `Please describe the size you need (e.g. A4, A3, 8×10 in, or custom dimensions).`,
-        nextState: 'AC_PRINT_AWAITING_SIZE',
-        nextContext: context,
-        done: false,
-      }
-    }
-    return {
-      reply: `Got it! 📸 Please share the photo for your acrylic print, or type *skip* to share later.`,
-      nextState: 'AC_PRINT_AWAITING_PHOTO',
-      nextContext: { ...context, enquiryAnswers: { ...answers, size: body.trim() } },
-      done: false,
-    }
-  }
-
-  if (state === 'AC_PRINT_AWAITING_PHOTO') {
-    const photoUrl = (numMedia > 0 && mediaUrl) ? mediaUrl : undefined
-    await saveEnquiry({
-      tenantId: params.tenantId,
-      customerPhone: params.customerPhone,
-      ownerPhone: params.ownerPhone,
-      whatsappNumber: params.whatsappNumber,
-      answers: { ...answers, photoUrl },
-      originalBody: body,
-    })
-    const reply = `🙏 Thank you! Enquiry received for an *Acrylic Print* (${answers.size}).\n\nThe owner will reach out shortly. 😊`
-    return { reply, nextState: 'IDLE', nextContext: {}, done: true }
-  }
-
-  // ── OTHER enquiry ─────────────────────────────────────────────────────────
-
+  // ── OTHER: details step ───────────────────────────────────────────────────
   if (state === 'OTHER_AWAITING_DETAILS') {
-    await saveEnquiry({
-      tenantId: params.tenantId,
-      customerPhone: params.customerPhone,
-      ownerPhone: params.ownerPhone,
-      whatsappNumber: params.whatsappNumber,
-      answers: { product: 'Other Enquiry', details: body },
-      originalBody: body,
-    })
-    const reply = params.messages['enquiry_other']
-      ?? `🙏 Thank you for reaching out!\n\nThe owner has noted your message and will contact you shortly.`
-    return { reply, nextState: 'IDLE', nextContext: {}, done: true }
+    const updatedAnswers: Record<string, string> = { ...answers, details: m }
+    if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
+
+    return {
+      reply: `Got it! When do you need it by?`,
+      nextState: 'OTHER_AWAITING_DATE',
+      nextContext: { ...context, enquiryAnswers: updatedAnswers },
+      done: false,
+    }
   }
 
-  return null // state not handled by enquiry module
+  // ── OTHER: date step ──────────────────────────────────────────────────────
+  if (state === 'OTHER_AWAITING_DATE') {
+    return {
+      reply: `And your name please?`,
+      nextState: 'OTHER_AWAITING_NAME',
+      nextContext: { ...context, enquiryAnswers: { ...answers, date: m } },
+      done: false,
+    }
+  }
+
+  // ── OTHER: name step → done ───────────────────────────────────────────────
+  if (state === 'OTHER_AWAITING_NAME') {
+    const name = m.split(' ')[0]
+    const finalAnswers = { ...answers, name: m }
+
+    await saveEnquiryAndNotify({
+      tenantId: p.tenantId,
+      customerPhone: p.customerPhone,
+      ownerPhone: p.ownerPhone,
+      whatsappNumber: p.whatsappNumber,
+      product: 'Other Enquiry',
+      answers: finalAnswers,
+    })
+
+    return {
+      reply: `Thank you, ${name}! 🙏 We've noted everything down.\n\nThe owner will reach out to you shortly. 😊`,
+      nextState: 'IDLE',
+      nextContext: {},
+      done: true,
+    }
+  }
+
+  return null
 }

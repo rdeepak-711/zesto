@@ -11,42 +11,41 @@ type Bubble = {
 }
 
 function buildScenarios(messages: Record<string, string>, businessName: string): Record<Scenario, Bubble[]> {
-  const welcome = (messages['welcome'] ?? `👋 Welcome to ${businessName}!\n\nWe print and frame your memories in premium quality. What are you looking for today?`)
-    .replace('{businessName}', businessName)
-    .replace(/{categories}/g, '')
-    .trim()
-
   const otherReply = messages['enquiry_other']
-    ?? `🙏 Thank you for reaching out!\n\nThe owner has noted your message and will contact you shortly.`
+    ?? `Thank you, Priya! 🙏 We've noted everything down.\n\nThe owner will reach out to you shortly. 😊`
 
   return {
     photo_frame: [
-      { dir: 'out', text: 'Hi 👋', time: '10:31' },
-      { dir: 'in',  text: welcome, time: '10:31' },
-      { dir: 'out', text: 'I want a photo frame', time: '10:32' },
-      { dir: 'in',  text: `📐 *Photo Frames* — here are our sizes:\n\n1. 4×6 in — ₹200\n2. 5×7 in — ₹270\n3. 6×8 in — ₹300\n4. 8×8 in — ₹350\n5. 8×10 in — ₹400\n6. 10×12 in — ₹550\n…and 10 more sizes\n\nWhich size would you like?`, time: '10:32' },
-      { dir: 'out', text: '5', time: '10:33' },
-      { dir: 'in',  text: `✅ *8×10 inches* — ₹400\n\nHow many frames do you need?`, time: '10:33' },
-      { dir: 'out', text: '2', time: '10:34' },
-      { dir: 'in',  text: `Got it — 2 frames 👍\n\n📸 Please share the photo you'd like to frame, or type *skip* if you'll share it later.`, time: '10:34' },
+      { dir: 'out', text: 'I want to frame a photo, 8×10 size', time: '10:31' },
+      { dir: 'in',  text: `*8×10 inches* — great! 📸 Do you have the photo ready? Send it here or we can follow up later.`, time: '10:31' },
+      { dir: 'out', text: '[photo sent]', time: '10:32' },
+      { dir: 'in',  text: `Got the photo! When do you need it by?`, time: '10:32' },
+      { dir: 'out', text: 'This Saturday', time: '10:33' },
+      { dir: 'in',  text: `And your name please? So we know who it's for. 😊`, time: '10:33' },
+      { dir: 'out', text: 'Ramesh', time: '10:34' },
+      { dir: 'in',  text: `Thank you, Ramesh! 🙏 We've noted your enquiry for a *8×10 inches* photo frame needed by This Saturday.\n\nThe owner will reach out to confirm everything shortly. 😊`, time: '10:34' },
     ],
     acrylic: [
-      { dir: 'out', text: 'Hi 👋', time: '11:10' },
-      { dir: 'in',  text: welcome, time: '11:10' },
-      { dir: 'out', text: 'I need an acrylic clock', time: '11:11' },
-      { dir: 'in',  text: `🎨 We offer these acrylic products:\n\n1. 🕐 Acrylic Wall Clock\n2. ✂️ Acrylic Photo Cutout\n3. 💡 Acrylic Night Lamp\n4. 🖼️ Acrylic Print\n\nWhich one are you interested in?`, time: '11:11' },
-      { dir: 'out', text: '1', time: '11:12' },
-      { dir: 'in',  text: `🕐 *Acrylic Photo Wall Clock*\n₹1100 (10in) · ₹1400 (12in) · ₹1700 (16in)\n\nChoose a shape:\n1. Circle\n2. Square (rounded)\n3. Rectangle\n4. Cushion\n5. Scalloped\n6. Arch\n7. Baroque\n8. Diamond\n9. Multi-panel (4 photos)`, time: '11:12' },
-      { dir: 'out', text: '1', time: '11:13' },
-      { dir: 'in',  text: `✅ *Circle* shape!\n\nWhat size?\n1. 10 inch — ₹1100\n2. 12 inch — ₹1400\n3. 16 inch — ₹1700`, time: '11:13' },
+      { dir: 'out', text: 'Hi', time: '11:10' },
+      { dir: 'in',  text: `Hey! 👋 What can we help you with today?`, time: '11:10' },
+      { dir: 'out', text: 'Looking for an acrylic clock with a family photo', time: '11:11' },
+      { dir: 'in',  text: `We do beautiful personalised acrylic pieces — wall clocks with your photo, life-size cutouts, glowing night lamps, and flat prints. What did you have in mind?`, time: '11:11' },
+      { dir: 'out', text: 'A wall clock, circle shape, for my parents anniversary', time: '11:12' },
+      { dir: 'in',  text: `Lovely! When do you need it by?`, time: '11:12' },
+      { dir: 'out', text: 'Next weekend', time: '11:13' },
+      { dir: 'in',  text: `And your name please?`, time: '11:13' },
+      { dir: 'out', text: 'Kavya', time: '11:14' },
+      { dir: 'in',  text: `Thank you, Kavya! 🙏 We've noted your enquiry — needed by Next weekend.\n\nThe owner will get back to you shortly to confirm the design and details. 😊`, time: '11:14' },
     ],
     other: [
-      { dir: 'out', text: 'Hi 👋', time: '12:00' },
-      { dir: 'in',  text: welcome, time: '12:00' },
-      { dir: 'out', text: 'Do you do passport size printing?', time: '12:01' },
-      { dir: 'in',  text: `🙏 We'd love to help!\n\nPlease share full details — product type, size, occasion, any special requirements.`, time: '12:01' },
-      { dir: 'out', text: 'Need 6 passport photos, colour, urgent by tomorrow', time: '12:02' },
-      { dir: 'in',  text: otherReply, time: '12:02' },
+      { dir: 'out', text: 'Do you do passport size photo printing?', time: '12:00' },
+      { dir: 'in',  text: `Tell us more! What are you looking for — size, occasion, any details you have in mind would really help.`, time: '12:00' },
+      { dir: 'out', text: '6 colour passport photos, urgent, needed tomorrow morning', time: '12:01' },
+      { dir: 'in',  text: `Got it! When do you need it by?`, time: '12:01' },
+      { dir: 'out', text: 'Tomorrow 9am', time: '12:02' },
+      { dir: 'in',  text: `And your name please?`, time: '12:02' },
+      { dir: 'out', text: 'Priya', time: '12:03' },
+      { dir: 'in',  text: otherReply, time: '12:03' },
     ],
   }
 }
@@ -68,9 +67,9 @@ function formatBubbleText(text: string) {
 }
 
 const SCENARIO_DELAYS: Record<Scenario, number[]> = {
-  photo_frame: [300, 1100, 2200, 3400, 5000, 6000, 7200, 8300],
-  acrylic:     [300, 1100, 2200, 3400, 4800, 5800, 7200, 8400],
-  other:       [300, 1100, 2200, 3200, 4600, 5600],
+  photo_frame: [300, 1000, 2100, 3100, 4300, 5200, 6300, 7400],
+  acrylic:     [300, 900, 1900, 2900, 4100, 5000, 6100, 7100, 8200, 9300],
+  other:       [300, 1000, 2100, 3000, 4100, 5000, 6100, 7100],
 }
 
 const TABS: { key: Scenario; icon: string; label: string; steps: string; desc: string }[] = [

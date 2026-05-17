@@ -4,7 +4,7 @@ import { getSession, saveSession, resetSession, isSessionStale } from '@/lib/bot
 import { processMessage, type BotState, itemTotal } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker } from '@/lib/bakerNotify'
-import { handleEnquiryState } from '@/lib/bot/enquiry'
+import { handleEnquiryState, ENQUIRY_STATES } from '@/lib/bot/enquiry'
 import { validateRequest } from 'twilio'
 import type { Tenant } from '@prisma/client'
 
@@ -602,54 +602,33 @@ export async function POST(req: NextRequest) {
   }
 
   // ── Enquiry mode ─────────────────────────────────────────────────────────
-  // Enabled per-tenant via the 'enquiry_mode' bot message (non-empty = on).
-  // IDLE → welcome → AWAITING_CATEGORY → multi-step questionnaire per product.
-  if (messages['enquiry_mode']) {
-    if (session.state === 'IDLE') {
-      const welcomeMsg = messages['welcome'] ?? `👋 Welcome to ${tenant.businessName}! What are you looking for today?`
-      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: welcomeMsg, direction: 'OUT' } })
-      await sendWhatsApp(customerPhone, welcomeMsg, tenant.whatsappNumber)
-      await saveSession(customerPhone, 'AWAITING_CATEGORY', [], {}, tenant.id)
-      return new NextResponse('', { status: 200 })
-    }
+  // Customer leads — bot reacts to what they say, no forced welcome.
+  // IDLE state is passed directly to the enquiry handler which detects intent.
+  if (messages['enquiry_mode'] && (session.state === 'IDLE' || ENQUIRY_STATES.includes(session.state))) {
+    const result = await handleEnquiryState({
+      tenantId: tenant.id,
+      customerPhone,
+      ownerPhone: tenant.ownerPhone,
+      whatsappNumber: tenant.whatsappNumber,
+      body,
+      mediaUrl,
+      numMedia,
+      state: session.state,
+      context: session.context as Parameters<typeof handleEnquiryState>[0]['context'],
+      messages,
+      twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
+      twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
+    })
 
-    const enquiryStates = [
-      'AWAITING_CATEGORY',
-      'PF_AWAITING_SIZE', 'PF_AWAITING_QUANTITY', 'PF_AWAITING_PHOTO',
-      'AC_AWAITING_SUBTYPE',
-      'AC_CLOCK_AWAITING_SHAPE', 'AC_CLOCK_AWAITING_SIZE', 'AC_CLOCK_AWAITING_PHOTO',
-      'AC_CUTOUT_AWAITING_SIZE', 'AC_CUTOUT_AWAITING_PHOTO',
-      'AC_LAMP_AWAITING_TYPE', 'AC_LAMP_AWAITING_SHAPE', 'AC_LAMP_AWAITING_PHOTO',
-      'AC_PRINT_AWAITING_SIZE', 'AC_PRINT_AWAITING_PHOTO',
-      'OTHER_AWAITING_DETAILS',
-    ]
-
-    if (enquiryStates.includes(session.state)) {
-      const result = await handleEnquiryState({
-        tenantId: tenant.id,
-        customerPhone,
-        ownerPhone: tenant.ownerPhone,
-        whatsappNumber: tenant.whatsappNumber,
-        body,
-        mediaUrl,
-        numMedia,
-        state: session.state,
-        context: session.context as Parameters<typeof handleEnquiryState>[0]['context'],
-        messages,
-        twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
-        twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
-      })
-
-      if (result) {
-        await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: result.reply, direction: 'OUT' } })
-        await sendWhatsApp(customerPhone, result.reply, tenant.whatsappNumber)
-        if (result.done) {
-          await resetSession(customerPhone, tenant.id)
-        } else {
-          await saveSession(customerPhone, result.nextState, session.cart, result.nextContext, tenant.id)
-        }
-        return new NextResponse('', { status: 200 })
+    if (result) {
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: result.reply, direction: 'OUT' } })
+      await sendWhatsApp(customerPhone, result.reply, tenant.whatsappNumber)
+      if (result.done) {
+        await resetSession(customerPhone, tenant.id)
+      } else {
+        await saveSession(customerPhone, result.nextState, session.cart, result.nextContext, tenant.id)
       }
+      return new NextResponse('', { status: 200 })
     }
   }
 
