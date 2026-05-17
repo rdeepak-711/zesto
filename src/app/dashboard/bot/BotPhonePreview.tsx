@@ -2,42 +2,57 @@
 
 import { useState, useEffect, useRef } from 'react'
 
-type Scenario = 'frame' | 'other'
+type Scenario = 'photo_frame' | 'acrylic' | 'other'
 
 type Bubble = {
   dir: 'in' | 'out'
   text: string
+  time: string
 }
 
-function buildScenarios(messages: Record<string, string>, businessName: string, pricingSample: string) {
-  const welcome = (messages['welcome'] ?? `👋 Welcome to ${businessName}! What are you looking for today?`)
+function buildScenarios(messages: Record<string, string>, businessName: string): Record<Scenario, Bubble[]> {
+  const welcome = (messages['welcome'] ?? `👋 Welcome to ${businessName}!\n\nWe print and frame your memories in premium quality. What are you looking for today?`)
     .replace('{businessName}', businessName)
     .replace(/{categories}/g, '')
     .trim()
 
-  const frameReply = (messages['enquiry_frame'] ?? '📐 *Our sizes & prices:*\n\n{pricing}\n\n🙏 Owner will reach out shortly!')
-    .replace('{pricing}', pricingSample)
-
-  const otherReply = messages['enquiry_other'] ?? '🙏 Thank you! The owner has noted your message and will contact you shortly.'
+  const otherReply = messages['enquiry_other']
+    ?? `🙏 Thank you for reaching out!\n\nThe owner has noted your message and will contact you shortly.`
 
   return {
-    frame: [
-      { dir: 'out', text: 'Hi' },
-      { dir: 'in', text: welcome },
-      { dir: 'out', text: 'Do you have photo frames? What are the prices?' },
-      { dir: 'in', text: frameReply },
-    ] as Bubble[],
+    photo_frame: [
+      { dir: 'out', text: 'Hi 👋', time: '10:31' },
+      { dir: 'in',  text: welcome, time: '10:31' },
+      { dir: 'out', text: 'I want a photo frame', time: '10:32' },
+      { dir: 'in',  text: `📐 *Photo Frames* — here are our sizes:\n\n1. 4×6 in — ₹200\n2. 5×7 in — ₹270\n3. 6×8 in — ₹300\n4. 8×8 in — ₹350\n5. 8×10 in — ₹400\n6. 10×12 in — ₹550\n…and 10 more sizes\n\nWhich size would you like?`, time: '10:32' },
+      { dir: 'out', text: '5', time: '10:33' },
+      { dir: 'in',  text: `✅ *8×10 inches* — ₹400\n\nHow many frames do you need?`, time: '10:33' },
+      { dir: 'out', text: '2', time: '10:34' },
+      { dir: 'in',  text: `Got it — 2 frames 👍\n\n📸 Please share the photo you'd like to frame, or type *skip* if you'll share it later.`, time: '10:34' },
+    ],
+    acrylic: [
+      { dir: 'out', text: 'Hi 👋', time: '11:10' },
+      { dir: 'in',  text: welcome, time: '11:10' },
+      { dir: 'out', text: 'I need an acrylic clock', time: '11:11' },
+      { dir: 'in',  text: `🎨 We offer these acrylic products:\n\n1. 🕐 Acrylic Wall Clock\n2. ✂️ Acrylic Photo Cutout\n3. 💡 Acrylic Night Lamp\n4. 🖼️ Acrylic Print\n\nWhich one are you interested in?`, time: '11:11' },
+      { dir: 'out', text: '1', time: '11:12' },
+      { dir: 'in',  text: `🕐 *Acrylic Photo Wall Clock*\n₹1100 (10in) · ₹1400 (12in) · ₹1700 (16in)\n\nChoose a shape:\n1. Circle\n2. Square (rounded)\n3. Rectangle\n4. Cushion\n5. Scalloped\n6. Arch\n7. Baroque\n8. Diamond\n9. Multi-panel (4 photos)`, time: '11:12' },
+      { dir: 'out', text: '1', time: '11:13' },
+      { dir: 'in',  text: `✅ *Circle* shape!\n\nWhat size?\n1. 10 inch — ₹1100\n2. 12 inch — ₹1400\n3. 16 inch — ₹1700`, time: '11:13' },
+    ],
     other: [
-      { dir: 'out', text: 'Hi' },
-      { dir: 'in', text: welcome },
-      { dir: 'out', text: 'Do you do passport size photo printing?' },
-      { dir: 'in', text: otherReply },
-    ] as Bubble[],
+      { dir: 'out', text: 'Hi 👋', time: '12:00' },
+      { dir: 'in',  text: welcome, time: '12:00' },
+      { dir: 'out', text: 'Do you do passport size printing?', time: '12:01' },
+      { dir: 'in',  text: `🙏 We'd love to help!\n\nPlease share full details — product type, size, occasion, any special requirements.`, time: '12:01' },
+      { dir: 'out', text: 'Need 6 passport photos, colour, urgent by tomorrow', time: '12:02' },
+      { dir: 'in',  text: otherReply, time: '12:02' },
+    ],
   }
 }
 
 function formatBubbleText(text: string) {
-  return text.split('\n').map((line, i) => {
+  return text.split('\n').map((line, i, arr) => {
     const parts = line.split(/(\*[^*]+\*)/g)
     return (
       <span key={i}>
@@ -46,40 +61,70 @@ function formatBubbleText(text: string) {
             ? <strong key={j}>{part.slice(1, -1)}</strong>
             : part
         )}
-        {i < text.split('\n').length - 1 && <br />}
+        {i < arr.length - 1 && <br />}
       </span>
     )
   })
 }
 
-const TIMES: Record<Scenario, string[]> = {
-  frame: ['10:31', '10:31', '10:32', '10:32'],
-  other: ['11:05', '11:05', '11:06', '11:06'],
+const SCENARIO_DELAYS: Record<Scenario, number[]> = {
+  photo_frame: [300, 1100, 2200, 3400, 5000, 6000, 7200, 8300],
+  acrylic:     [300, 1100, 2200, 3400, 4800, 5800, 7200, 8400],
+  other:       [300, 1100, 2200, 3200, 4600, 5600],
 }
+
+const TABS: { key: Scenario; icon: string; label: string; steps: string; desc: string }[] = [
+  {
+    key: 'photo_frame',
+    icon: '🖼️',
+    label: 'Photo Frame',
+    steps: '3 steps',
+    desc: 'Size → Quantity → Photo',
+  },
+  {
+    key: 'acrylic',
+    icon: '🎨',
+    label: 'Acrylic',
+    steps: '3–4 steps',
+    desc: 'Sub-type → Shape → Size → Photo',
+  },
+  {
+    key: 'other',
+    icon: '💬',
+    label: 'Other',
+    steps: '1 step',
+    desc: 'Details collected, owner notified',
+  },
+]
 
 export default function BotPhonePreview({
   messages,
   businessName,
-  pricingSample,
 }: {
   messages: Record<string, string>
   businessName: string
   pricingSample: string
 }) {
-  const [scenario, setScenario] = useState<Scenario>('frame')
+  const [scenario, setScenario] = useState<Scenario>('photo_frame')
   const [visibleCount, setVisibleCount] = useState(0)
   const timerRef = useRef<ReturnType<typeof setTimeout>[]>([])
+  const chatRef = useRef<HTMLDivElement>(null)
 
-  const scenarios = buildScenarios(messages, businessName, pricingSample)
+  const scenarios = buildScenarios(messages, businessName)
   const bubbles = scenarios[scenario]
 
   function startAnimation() {
     timerRef.current.forEach(clearTimeout)
     timerRef.current = []
     setVisibleCount(0)
-    const delays = [300, 1200, 2400, 3800]
-    delays.forEach((delay, i) => {
-      const t = setTimeout(() => setVisibleCount(i + 1), delay)
+    SCENARIO_DELAYS[scenario].forEach((delay, i) => {
+      const t = setTimeout(() => {
+        setVisibleCount(i + 1)
+        // scroll to bottom as new bubble appears
+        setTimeout(() => {
+          chatRef.current?.scrollTo({ top: chatRef.current.scrollHeight, behavior: 'smooth' })
+        }, 50)
+      }, delay)
       timerRef.current.push(t)
     })
   }
@@ -88,11 +133,6 @@ export default function BotPhonePreview({
     startAnimation()
     return () => timerRef.current.forEach(clearTimeout)
   }, [scenario]) // eslint-disable-line react-hooks/exhaustive-deps
-
-  const tabs: { key: Scenario; icon: string; label: string; desc: string }[] = [
-    { key: 'frame', icon: '🖼️', label: 'Frame inquiry', desc: 'Customer asks about photo frames' },
-    { key: 'other', icon: '💬', label: 'Other inquiry', desc: 'Unrecognised message — owner notified' },
-  ]
 
   return (
     <>
@@ -165,9 +205,7 @@ export default function BotPhonePreview({
           from { opacity: 0; transform: translateY(8px); }
           to   { opacity: 1; transform: translateY(0); }
         }
-        .bubble-appear {
-          animation: bubbleSlide 0.25s ease forwards;
-        }
+        .bubble-appear { animation: bubbleSlide 0.25s ease forwards; }
         @keyframes bounceDot {
           0%, 60%, 100% { transform: translateY(0); }
           30% { transform: translateY(-4px); }
@@ -184,24 +222,38 @@ export default function BotPhonePreview({
 
       <div className="flex flex-col items-center gap-4 w-full">
 
-        {/* Toggle */}
+        {/* Header */}
         <div className="flex w-full items-center justify-between">
           <span className="text-[10px] font-bold tracking-widest uppercase text-gray-400">Live Preview</span>
-          <div className="flex bg-gray-100 rounded-lg p-0.5 gap-0.5">
-            {tabs.map(t => (
-              <button
-                key={t.key}
-                onClick={() => setScenario(t.key)}
-                className={`text-[11px] font-semibold px-3 py-1.5 rounded-md transition-all ${
-                  scenario === t.key
-                    ? 'bg-white text-gray-900 shadow-sm'
-                    : 'text-gray-500 hover:text-gray-700'
-                }`}
-              >
+          <button
+            onClick={startAnimation}
+            className="text-[10px] font-semibold text-orange-500 hover:text-orange-600 transition-colors"
+          >
+            ↺ Replay
+          </button>
+        </div>
+
+        {/* Scenario selector */}
+        <div className="flex w-full bg-gray-100 rounded-xl p-1 gap-1">
+          {TABS.map(t => (
+            <button
+              key={t.key}
+              onClick={() => setScenario(t.key)}
+              className={`flex-1 flex flex-col items-center py-2 px-1 rounded-lg text-center transition-all ${
+                scenario === t.key
+                  ? 'bg-white shadow-sm'
+                  : 'hover:bg-white/50'
+              }`}
+            >
+              <span className="text-base leading-none">{t.icon}</span>
+              <span className={`text-[10px] font-bold mt-1 leading-none ${scenario === t.key ? 'text-gray-900' : 'text-gray-500'}`}>
                 {t.label}
-              </button>
-            ))}
-          </div>
+              </span>
+              <span className={`text-[9px] mt-0.5 leading-none ${scenario === t.key ? 'text-orange-500 font-semibold' : 'text-gray-400'}`}>
+                {t.steps}
+              </span>
+            </button>
+          ))}
         </div>
 
         {/* Phone */}
@@ -229,7 +281,7 @@ export default function BotPhonePreview({
             </div>
 
             {/* Chat */}
-            <div className="wa-chat-area">
+            <div className="wa-chat-area" ref={chatRef}>
               <div className="self-center text-[10px] text-gray-600 bg-white/70 rounded-md px-2 py-0.5 font-mono mb-1">Today</div>
 
               {bubbles.map((b, i) => {
@@ -241,16 +293,14 @@ export default function BotPhonePreview({
                 return (
                   <div key={`${scenario}-${i}`}>
                     <div className={`flex bubble-appear ${b.dir === 'out' ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`max-w-[82%] px-2.5 py-1.5 font-mono text-[10.5px] leading-[1.55] ${
-                          b.dir === 'out' ? 'bubble-out' : 'bubble-in'
-                        }`}
-                      >
+                      <div className={`max-w-[82%] px-2.5 py-1.5 font-mono text-[10.5px] leading-[1.55] ${
+                        b.dir === 'out' ? 'bubble-out' : 'bubble-in'
+                      }`}>
                         {formatBubbleText(b.text)}
                         <div className={`flex items-center justify-end gap-1 mt-0.5 text-[9px] ${
                           b.dir === 'out' ? 'text-[#7eb67e]' : 'text-gray-400'
                         }`}>
-                          {TIMES[scenario][i]}
+                          {b.time}
                           {b.dir === 'out' && <span className="text-[#53bdeb]">✓✓</span>}
                         </div>
                       </div>
@@ -284,26 +334,17 @@ export default function BotPhonePreview({
           </div>
         </div>
 
-        {/* Scenario cards */}
-        <div className="w-full flex flex-col gap-2">
-          {tabs.map(t => (
-            <button
-              key={t.key}
-              onClick={() => setScenario(t.key)}
-              className={`flex items-start gap-3 text-left px-3 py-2.5 rounded-xl border transition-all ${
-                scenario === t.key
-                  ? 'border-orange-400 bg-orange-50 shadow-[0_0_0_3px_rgba(249,115,22,0.08)]'
-                  : 'border-gray-200 bg-white hover:border-orange-300'
-              }`}
-            >
-              <span className="text-lg mt-0.5">{t.icon}</span>
-              <div>
-                <div className="text-[12px] font-semibold text-gray-700">{t.label}</div>
-                <div className="text-[11px] text-gray-400 mt-0.5 leading-snug">{t.desc}</div>
-              </div>
-            </button>
-          ))}
-        </div>
+        {/* Scenario description */}
+        {TABS.filter(t => t.key === scenario).map(t => (
+          <div key={t.key} className="w-full px-3 py-2.5 rounded-xl border border-orange-200 bg-orange-50">
+            <div className="flex items-center gap-2 mb-1">
+              <span className="text-base">{t.icon}</span>
+              <span className="text-[12px] font-bold text-orange-700">{t.label} Flow</span>
+              <span className="ml-auto text-[10px] font-semibold text-orange-500 bg-orange-100 px-2 py-0.5 rounded-full">{t.steps}</span>
+            </div>
+            <div className="text-[11px] text-orange-600 leading-snug">{t.desc}</div>
+          </div>
+        ))}
 
       </div>
     </>

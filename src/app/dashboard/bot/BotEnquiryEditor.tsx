@@ -5,44 +5,84 @@ import { useRouter } from 'next/navigation'
 
 type BotMessage = { key: string; label: string; value: string }
 
-const STEPS = [
+// Only these 3 keys are editable — everything else is hardcoded in the questionnaire
+const EDITABLE_STEPS = [
   {
     num: 1,
-    title: 'Customer says hi',
+    icon: '👋',
+    title: 'Welcome message',
     trigger: 'any first message',
     triggerColor: 'bg-emerald-50 text-emerald-700 border-emerald-200',
     keys: [{ key: 'welcome', hint: undefined }],
   },
   {
     num: 2,
-    title: 'Customer asks about your product',
-    trigger: 'message contains keyword',
+    icon: '🔑',
+    title: 'Product keywords',
+    trigger: 'routes to questionnaire',
     triggerColor: 'bg-orange-50 text-orange-700 border-orange-200',
-    keys: [
-      { key: 'enquiry_keywords', hint: 'Comma-separated. Bot shows catalog when any keyword matches.' },
-      { key: 'enquiry_frame', hint: 'Use {pricing} — auto-filled with your full menu list.' },
-    ],
+    keys: [{ key: 'enquiry_keywords', hint: 'Comma-separated. "frame,photo frame,acrylic" — customer message must contain one of these to trigger the product questionnaire.' }],
   },
   {
     num: 3,
-    title: 'Customer asks anything else',
+    icon: '💬',
+    title: 'Other enquiry reply',
     trigger: 'no keyword match',
     triggerColor: 'bg-slate-100 text-slate-600 border-slate-200',
     keys: [{ key: 'enquiry_other', hint: undefined }],
   },
 ]
 
+// Visual flow overview — read-only
+const FLOW_OVERVIEW = [
+  {
+    product: 'Photo Frame 🖼️',
+    color: 'border-blue-200 bg-blue-50',
+    labelColor: 'text-blue-700 bg-blue-100',
+    steps: ['Which size? (16 options with prices)', 'How many frames?', 'Share your photo (size check)'],
+    outcome: 'Saved as enquiry · Owner notified with all details',
+  },
+  {
+    product: 'Acrylic Wall Clock 🕐',
+    color: 'border-purple-200 bg-purple-50',
+    labelColor: 'text-purple-700 bg-purple-100',
+    steps: ['Sub-type? (Clock / Cutout / Lamp / Print)', 'Shape? (9 options)', 'Size? (10/12/16 in)', 'Share photo'],
+    outcome: 'Saved as enquiry · Owner notified with all details',
+  },
+  {
+    product: 'Acrylic Cutout ✂️',
+    color: 'border-pink-200 bg-pink-50',
+    labelColor: 'text-pink-700 bg-pink-100',
+    steps: ['Sub-type? (Clock / Cutout / Lamp / Print)', 'Size? (Large 12×8 / Small 6×8)', 'Share photo'],
+    outcome: 'Saved as enquiry · Owner notified with all details',
+  },
+  {
+    product: 'Acrylic Night Lamp 💡',
+    color: 'border-amber-200 bg-amber-50',
+    labelColor: 'text-amber-700 bg-amber-100',
+    steps: ['Sub-type? (Clock / Cutout / Lamp / Print)', 'Style? (Engraving / Color Print)', 'Shape? (6 options)', 'Share photo'],
+    outcome: 'Saved as enquiry · Owner notified with all details',
+  },
+  {
+    product: 'Acrylic Print 🖼️',
+    color: 'border-teal-200 bg-teal-50',
+    labelColor: 'text-teal-700 bg-teal-100',
+    steps: ['Sub-type? (Clock / Cutout / Lamp / Print)', 'Size / dimensions?', 'Share photo'],
+    outcome: 'Saved as enquiry · Owner notified with all details',
+  },
+  {
+    product: 'Other enquiry 💬',
+    color: 'border-gray-200 bg-gray-50',
+    labelColor: 'text-gray-600 bg-gray-100',
+    steps: ['Describe your requirement in full'],
+    outcome: 'Saved as enquiry · Owner notified',
+  },
+]
+
 function MessageField({
-  msgKey,
-  label,
-  value,
-  hint,
-  onSave,
+  msgKey, label, value, hint, onSave,
 }: {
-  msgKey: string
-  label: string
-  value: string
-  hint?: string
+  msgKey: string; label: string; value: string; hint?: string
   onSave: (key: string, val: string) => Promise<void>
 }) {
   const [editing, setEditing] = useState(false)
@@ -88,9 +128,7 @@ function MessageField({
             autoFocus
             className="w-full font-mono text-xs rounded-lg border border-orange-300 bg-orange-50/30 px-3 py-2 focus:outline-none focus:ring-2 focus:ring-orange-400 resize-none leading-relaxed"
           />
-          {hint && (
-            <p className="text-[10px] text-gray-400 border-l-2 border-gray-200 pl-2 leading-snug">{hint}</p>
-          )}
+          {hint && <p className="text-[10px] text-gray-400 border-l-2 border-gray-200 pl-2 leading-snug">{hint}</p>}
           <div className="flex gap-2">
             <button
               onClick={save}
@@ -123,6 +161,7 @@ export default function BotEnquiryEditor({ initialMessages }: { initialMessages:
   )
   const labels = Object.fromEntries(initialMessages.map(m => [m.key, m.label]))
   const [openStep, setOpenStep] = useState<number>(1)
+  const [showFlow, setShowFlow] = useState(false)
 
   async function saveMessage(key: string, value: string) {
     await fetch(`/api/bot-messages/${key}`, {
@@ -135,54 +174,107 @@ export default function BotEnquiryEditor({ initialMessages }: { initialMessages:
   }
 
   return (
-    <div className="space-y-2 max-w-2xl">
-      {STEPS.map(step => {
-        const isOpen = openStep === step.num
-        return (
-          <div
-            key={step.num}
-            className={`bg-white border rounded-xl overflow-hidden transition-all ${
-              isOpen ? 'border-orange-400 shadow-[0_0_0_3px_rgba(249,115,22,0.08)]' : 'border-gray-200'
-            }`}
-          >
-            {/* Header */}
-            <button
-              className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-              onClick={() => setOpenStep(isOpen ? -1 : step.num)}
-            >
-              <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 transition-colors ${
-                isOpen ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500'
-              }`}>
-                {step.num}
-              </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-semibold text-gray-800">{step.title}</div>
-                <div className="text-[11px] font-mono text-gray-400 mt-0.5">{step.trigger}</div>
-              </div>
-              <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0 ${step.triggerColor}`}>
-                {step.trigger}
-              </span>
-              <span className={`text-xs text-gray-300 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
-            </button>
+    <div className="space-y-4 max-w-2xl">
 
-            {/* Body */}
-            {isOpen && (
-              <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-4">
-                {step.keys.map(({ key, hint }) => (
-                  <MessageField
-                    key={key}
-                    msgKey={key}
-                    label={labels[key] ?? key}
-                    value={messages[key] ?? ''}
-                    hint={hint}
-                    onSave={saveMessage}
-                  />
-                ))}
-              </div>
-            )}
+      {/* Editable steps */}
+      <div className="space-y-2">
+        {EDITABLE_STEPS.map(step => {
+          const isOpen = openStep === step.num
+          return (
+            <div
+              key={step.num}
+              className={`bg-white border rounded-xl overflow-hidden transition-all ${
+                isOpen ? 'border-orange-400 shadow-[0_0_0_3px_rgba(249,115,22,0.08)]' : 'border-gray-200'
+              }`}
+            >
+              <button
+                className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+                onClick={() => setOpenStep(isOpen ? -1 : step.num)}
+              >
+                <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[11px] font-bold flex-shrink-0 transition-colors ${
+                  isOpen ? 'bg-orange-500 text-white' : 'bg-gray-100 text-gray-500'
+                }`}>
+                  {step.num}
+                </div>
+                <span className="text-base leading-none">{step.icon}</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-800">{step.title}</div>
+                  <div className="text-[11px] font-mono text-gray-400 mt-0.5">{step.trigger}</div>
+                </div>
+                <span className={`text-[11px] font-medium px-2 py-0.5 rounded-full border flex-shrink-0 ${step.triggerColor}`}>
+                  {step.trigger}
+                </span>
+                <span className={`text-xs text-gray-300 ml-1 transition-transform ${isOpen ? 'rotate-180' : ''}`}>▾</span>
+              </button>
+
+              {isOpen && (
+                <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-4">
+                  {step.keys.map(({ key, hint }) => (
+                    <MessageField
+                      key={key}
+                      msgKey={key}
+                      label={labels[key] ?? key}
+                      value={messages[key] ?? ''}
+                      hint={hint}
+                      onSave={saveMessage}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )
+        })}
+      </div>
+
+      {/* Questionnaire flow overview */}
+      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
+        <button
+          className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+          onClick={() => setShowFlow(f => !f)}
+        >
+          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
+            <span className="text-[11px]">🗺</span>
           </div>
-        )
-      })}
+          <div className="flex-1">
+            <div className="text-sm font-semibold text-gray-800">Questionnaire flow</div>
+            <div className="text-[11px] text-gray-400 mt-0.5">What the bot asks for each product type</div>
+          </div>
+          <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full mr-1">read-only</span>
+          <span className={`text-xs text-gray-300 transition-transform ${showFlow ? 'rotate-180' : ''}`}>▾</span>
+        </button>
+
+        {showFlow && (
+          <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">
+            <p className="text-[11px] text-gray-400 leading-snug mb-3">
+              These steps are automatic — the bot guides the customer through them in sequence.
+              Photo uploads trigger an aspect-ratio check that suggests the best frame size.
+            </p>
+            {FLOW_OVERVIEW.map((flow, i) => (
+              <div key={i} className={`border rounded-xl p-3 ${flow.color}`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${flow.labelColor}`}>
+                    {flow.product}
+                  </span>
+                </div>
+                <div className="flex flex-col gap-1 mb-2">
+                  {flow.steps.map((step, j) => (
+                    <div key={j} className="flex items-start gap-2">
+                      <span className="text-[10px] font-bold text-gray-400 mt-0.5 flex-shrink-0">
+                        {j + 1}.
+                      </span>
+                      <span className="text-[11px] text-gray-600 leading-snug">{step}</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="text-[10px] text-gray-500 border-t border-black/5 pt-2 mt-1">
+                  ✓ {flow.outcome}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
     </div>
   )
 }
