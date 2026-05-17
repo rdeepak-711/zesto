@@ -637,8 +637,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const frameKeywords = ['frame', 'photo', 'print', 'price', 'size', 'cost', 'rate', 'inches']
-    const isFrameQuery = frameKeywords.some(kw => body.toLowerCase().includes(kw))
+    const isFrameQuery = /photo\s*frame|frame/i.test(body)
 
     let reply: string
     if (isFrameQuery) {
