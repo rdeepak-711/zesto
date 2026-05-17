@@ -74,7 +74,7 @@ async function main() {
     {
       key: 'enquiry_keywords',
       label: 'Keywords that trigger the catalog reply (comma-separated)',
-      value: 'frame,photo frame',
+      value: 'frame,photo frame,acrylic',
     },
     {
       key: 'enquiry_frame',

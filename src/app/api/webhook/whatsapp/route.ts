@@ -4,6 +4,7 @@ import { getSession, saveSession, resetSession, isSessionStale } from '@/lib/bot
 import { processMessage, type BotState, itemTotal } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker } from '@/lib/bakerNotify'
+import { handleEnquiryState } from '@/lib/bot/enquiry'
 import { validateRequest } from 'twilio'
 import type { Tenant } from '@prisma/client'
 
@@ -374,6 +375,8 @@ export async function POST(req: NextRequest) {
   const rawTo = formData.get('To')?.toString() ?? ''
   const customerPhone = rawFrom.replace('whatsapp:', '')
   const toNumber = rawTo.replace('whatsapp:', '')
+  const numMedia = parseInt(formData.get('NumMedia')?.toString() ?? '0', 10)
+  const mediaUrl = formData.get('MediaUrl0')?.toString()
 
   if (!customerPhone) return new NextResponse('Bad Request', { status: 400 })
 
@@ -600,67 +603,54 @@ export async function POST(req: NextRequest) {
 
   // ── Enquiry mode ─────────────────────────────────────────────────────────
   // Enabled per-tenant via the 'enquiry_mode' bot message (non-empty = on).
-  // IDLE: show welcome question, advance to AWAITING_CATEGORY.
-  // AWAITING_CATEGORY: save customer's message as enquiry, reply with catalog
-  //   or generic acknowledgment based on 'enquiry_keywords'.
-  if (messages['enquiry_mode'] && session.state === 'IDLE') {
-    const welcomeMsg = messages['welcome'] ?? `👋 Welcome to ${tenant.businessName}! What are you looking for today?`
-    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: welcomeMsg, direction: 'OUT' } })
-    await sendWhatsApp(customerPhone, welcomeMsg, tenant.whatsappNumber)
-    await saveSession(customerPhone, 'AWAITING_CATEGORY', [], {}, tenant.id)
-    return new NextResponse('', { status: 200 })
-  }
+  // IDLE → welcome → AWAITING_CATEGORY → multi-step questionnaire per product.
+  if (messages['enquiry_mode']) {
+    if (session.state === 'IDLE') {
+      const welcomeMsg = messages['welcome'] ?? `👋 Welcome to ${tenant.businessName}! What are you looking for today?`
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: welcomeMsg, direction: 'OUT' } })
+      await sendWhatsApp(customerPhone, welcomeMsg, tenant.whatsappNumber)
+      await saveSession(customerPhone, 'AWAITING_CATEGORY', [], {}, tenant.id)
+      return new NextResponse('', { status: 200 })
+    }
 
-  if (messages['enquiry_mode'] && session.state === 'AWAITING_CATEGORY') {
-    const customCat = categories.find(c => c.isCustom)
-    const customItem = customCat ? menuItems.find(i => i.categoryId === customCat.id) : null
-    if (customItem) {
-      const prevOrderForName = await db.order.findFirst({
-        where: { tenantId: tenant.id, customerPhone },
-        orderBy: { createdAt: 'desc' },
-        select: { customerName: true },
-      })
-      const enquiryOrder = await db.order.create({
-        data: {
-          tenantId: tenant.id,
-          customerPhone,
-          customerName: prevOrderForName?.customerName ?? 'WhatsApp Enquiry',
-          totalAmount: 0,
-          notes: body,
-          paymentMethod: 'ONLINE',
-          items: { create: [{ menuItemId: customItem.id, name: 'Enquiry', price: 0, quantity: 1, fieldsJson: '[]' }] },
-        },
-      })
-      await notifyBaker(
-        enquiryOrder.id,
-        [{ menuItemId: customItem.id, name: `Enquiry: ${body}`, price: 0, quantity: 1, fields: [] }],
-        0,
+    const enquiryStates = [
+      'AWAITING_CATEGORY',
+      'PF_AWAITING_SIZE', 'PF_AWAITING_QUANTITY', 'PF_AWAITING_PHOTO',
+      'AC_AWAITING_SUBTYPE',
+      'AC_CLOCK_AWAITING_SHAPE', 'AC_CLOCK_AWAITING_SIZE', 'AC_CLOCK_AWAITING_PHOTO',
+      'AC_CUTOUT_AWAITING_SIZE', 'AC_CUTOUT_AWAITING_PHOTO',
+      'AC_LAMP_AWAITING_TYPE', 'AC_LAMP_AWAITING_SHAPE', 'AC_LAMP_AWAITING_PHOTO',
+      'AC_PRINT_AWAITING_SIZE', 'AC_PRINT_AWAITING_PHOTO',
+      'OTHER_AWAITING_DETAILS',
+    ]
+
+    if (enquiryStates.includes(session.state)) {
+      const result = await handleEnquiryState({
+        tenantId: tenant.id,
         customerPhone,
-        tenant.ownerPhone,
-        tenant.whatsappNumber,
-      )
+        ownerPhone: tenant.ownerPhone,
+        whatsappNumber: tenant.whatsappNumber,
+        body,
+        mediaUrl,
+        numMedia,
+        state: session.state,
+        context: session.context as Parameters<typeof handleEnquiryState>[0]['context'],
+        messages,
+        twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
+        twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
+      })
+
+      if (result) {
+        await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: result.reply, direction: 'OUT' } })
+        await sendWhatsApp(customerPhone, result.reply, tenant.whatsappNumber)
+        if (result.done) {
+          await resetSession(customerPhone, tenant.id)
+        } else {
+          await saveSession(customerPhone, result.nextState, session.cart, result.nextContext, tenant.id)
+        }
+        return new NextResponse('', { status: 200 })
+      }
     }
-
-    const keywordsRaw = messages['enquiry_keywords'] ?? ''
-    const keywords = keywordsRaw.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
-    const isFrameQuery = keywords.length > 0 && keywords.some(kw => body.toLowerCase().includes(kw))
-
-    let reply: string
-    if (isFrameQuery) {
-      const pricingItems = menuItems
-        .filter(i => { const cat = categories.find(c => c.id === i.categoryId); return cat && !cat.isCustom })
-        .sort((a, b) => a.sortOrder - b.sortOrder)
-      const pricingList = pricingItems.map(i => `• ${i.name} — ₹${i.price}`).join('\n')
-      const template = messages['enquiry_frame'] ?? `📐 *Our Photo Frame Sizes & Prices:*\n\n{pricing}\n\n🙏 The owner will reach out to you shortly!`
-      reply = template.replace('{pricing}', pricingList)
-    } else {
-      reply = messages['enquiry_other'] ?? '🙏 Thank you for reaching out! The owner has taken note of your message and will contact you shortly.'
-    }
-
-    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
-    await sendWhatsApp(customerPhone, reply, tenant.whatsappNumber)
-    await resetSession(customerPhone, tenant.id)
-    return new NextResponse('', { status: 200 })
   }
 
   // ── AI intent parser (natural language → fast-track to confirmation) ──────
