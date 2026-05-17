@@ -598,6 +598,66 @@ export async function POST(req: NextRequest) {
     return new NextResponse('', { status: 200 })
   }
 
+  // ── Enquiry mode ─────────────────────────────────────────────────────────
+  // Enabled per-tenant via the 'enquiry_mode' bot message (non-empty = on).
+  // Flow: customer sends any message → bot saves it as a Custom Order enquiry →
+  //   if message mentions frames/pricing: reply with full menu pricing list
+  //   otherwise: "owner will reach out shortly"
+  // Both paths reset the session so each message is treated as a fresh enquiry.
+  if (
+    messages['enquiry_mode'] &&
+    (session.state === 'IDLE' || session.state === 'AWAITING_CATEGORY')
+  ) {
+    const customCat = categories.find(c => c.isCustom)
+    const customItem = customCat ? menuItems.find(i => i.categoryId === customCat.id) : null
+    if (customItem) {
+      const prevOrderForName = await db.order.findFirst({
+        where: { tenantId: tenant.id, customerPhone },
+        orderBy: { createdAt: 'desc' },
+        select: { customerName: true },
+      })
+      const enquiryOrder = await db.order.create({
+        data: {
+          tenantId: tenant.id,
+          customerPhone,
+          customerName: prevOrderForName?.customerName ?? 'WhatsApp Enquiry',
+          totalAmount: 0,
+          notes: body,
+          paymentMethod: 'ONLINE',
+          items: { create: [{ menuItemId: customItem.id, name: 'Enquiry', price: 0, quantity: 1, fieldsJson: '[]' }] },
+        },
+      })
+      await notifyBaker(
+        enquiryOrder.id,
+        [{ menuItemId: customItem.id, name: `Enquiry: ${body}`, price: 0, quantity: 1, fields: [] }],
+        0,
+        customerPhone,
+        tenant.ownerPhone,
+        tenant.whatsappNumber,
+      )
+    }
+
+    const frameKeywords = ['frame', 'photo', 'print', 'price', 'size', 'cost', 'rate', 'inches']
+    const isFrameQuery = frameKeywords.some(kw => body.toLowerCase().includes(kw))
+
+    let reply: string
+    if (isFrameQuery) {
+      const pricingItems = menuItems
+        .filter(i => { const cat = categories.find(c => c.id === i.categoryId); return cat && !cat.isCustom })
+        .sort((a, b) => a.sortOrder - b.sortOrder)
+      const pricingList = pricingItems.map(i => `• ${i.name} — ₹${i.price}`).join('\n')
+      const template = messages['enquiry_frame'] ?? `📐 *Our Photo Frame Sizes & Prices:*\n\n{pricing}\n\n🙏 The owner will reach out to you shortly!`
+      reply = template.replace('{pricing}', pricingList)
+    } else {
+      reply = messages['enquiry_other'] ?? '🙏 Thank you for reaching out! The owner has taken note of your message and will contact you shortly.'
+    }
+
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+    await sendWhatsApp(customerPhone, reply, tenant.whatsappNumber)
+    await resetSession(customerPhone, tenant.id)
+    return new NextResponse('', { status: 200 })
+  }
+
   // ── AI intent parser (natural language → fast-track to confirmation) ──────
   if (
     process.env.OPENROUTER_API_KEY &&
@@ -686,53 +746,6 @@ Rules:
     deliveryDateLabel: tenant.deliveryDateLabel,
     businessName: tenant.businessName,
   })
-
-  // ── Enquiry catch-all ─────────────────────────────────────────────────────
-  // Enabled per-tenant by setting the 'enquiry_reply' bot message to a non-empty value.
-  // When an unrecognised non-numeric message arrives at AWAITING_CATEGORY (customer
-  // ignored the menu), save it as a Custom Order so the owner sees it on the dashboard.
-  const enquiryReply = messages['enquiry_reply']
-  if (
-    enquiryReply &&
-    session.state === 'AWAITING_CATEGORY' &&
-    output.nextState === 'AWAITING_CATEGORY' &&
-    !/^\d+$/.test(body.trim())
-  ) {
-    const customCat = categories.find(c => c.isCustom)
-    const customItem = customCat ? menuItems.find(i => i.categoryId === customCat.id) : null
-    if (customItem) {
-      const prevOrderForName = await db.order.findFirst({
-        where: { tenantId: tenant.id, customerPhone },
-        orderBy: { createdAt: 'desc' },
-        select: { customerName: true },
-      })
-      const enquiryOrder = await db.order.create({
-        data: {
-          tenantId: tenant.id,
-          customerPhone,
-          customerName: prevOrderForName?.customerName ?? 'WhatsApp Enquiry',
-          totalAmount: 0,
-          notes: body,
-          paymentMethod: 'ONLINE',
-          items: {
-            create: [{ menuItemId: customItem.id, name: 'Enquiry', price: 0, quantity: 1, fieldsJson: '[]' }],
-          },
-        },
-      })
-      await notifyBaker(
-        enquiryOrder.id,
-        [{ menuItemId: customItem.id, name: `Enquiry: ${body}`, price: 0, quantity: 1, fields: [] }],
-        0,
-        customerPhone,
-        tenant.ownerPhone,
-        tenant.whatsappNumber,
-      )
-    }
-    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: enquiryReply, direction: 'OUT' } })
-    await sendWhatsApp(customerPhone, enquiryReply, tenant.whatsappNumber)
-    await resetSession(customerPhone, tenant.id)
-    return new NextResponse('', { status: 200 })
-  }
 
   if (output.placeOrder) {
     const isCustom = !!output.context.customDescription

@@ -64,12 +64,22 @@ async function main() {
     {
       key: 'welcome',
       label: 'Welcome greeting',
-      value: `👋 Welcome to Phoenix Photo Studio!\n\nWe print and frame your memories in premium quality.\n\n{categories}\n\nReply *1* to browse our Photo Frames & pricing.\n\n📦 Type *track* to check your order status.`,
+      value: `👋 Welcome to Phoenix Photo Studio!\n\nWe print and frame your memories in premium quality. What are you looking for today?`,
     },
     {
-      key: 'enquiry_reply',
-      label: 'Enquiry catch-all reply',
-      value: `🙏 Thank you for reaching out to Phoenix Photo Studio!\n\nThe owner has taken note of your message and will contact you soon.`,
+      key: 'enquiry_mode',
+      label: 'Enquiry mode (non-empty = enabled)',
+      value: 'true',
+    },
+    {
+      key: 'enquiry_frame',
+      label: 'Reply when customer asks about frames/pricing',
+      value: `📐 *Our Photo Frame Sizes & Prices:*\n\n{pricing}\n\n🙏 The owner will reach out to you shortly!`,
+    },
+    {
+      key: 'enquiry_other',
+      label: 'Reply for all other enquiries',
+      value: `🙏 Thank you for reaching out to Phoenix Photo Studio!\n\nThe owner has taken note of your message and will contact you shortly.`,
     },
   ]
   for (const msg of phoenixMessages) {
