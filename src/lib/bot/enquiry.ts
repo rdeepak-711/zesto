@@ -145,14 +145,16 @@ async function suggestFrameFromPhoto(
 
 function buildSummary(product: string, answers: Record<string, string>): string {
   const lines: string[] = [`Product: ${product}`]
-  if (answers.size)      lines.push(`Size: ${answers.size}`)
-  if (answers.quantity)  lines.push(`Quantity: ${answers.quantity}`)
-  if (answers.shape)     lines.push(`Shape: ${answers.shape}`)
-  if (answers.details)   lines.push(`Details: ${answers.details}`)
-  if (answers.photoUrl)  lines.push(`Photo: ${answers.photoUrl}`)
+  if (answers.frameType)     lines.push(`Frame type: ${answers.frameType}`)
+  if (answers.acrylicType)   lines.push(`Acrylic type: ${answers.acrylicType}`)
+  if (answers.size)          lines.push(`Size: ${answers.size}`)
+  if (answers.spec)          lines.push(`Spec: ${answers.spec}`)
+  if (answers.occasion)      lines.push(`Occasion: ${answers.occasion}`)
+  if (answers.quantity)      lines.push(`Quantity: ${answers.quantity}`)
+  if (answers.details)       lines.push(`Details: ${answers.details}`)
+  if (answers.photoUrl)      lines.push(`Photo: ${answers.photoUrl}`)
   if (answers.suggestedSize) lines.push(`⚠️ Photo fits better in: ${answers.suggestedSize}`)
-  if (answers.date)      lines.push(`Needed by: ${answers.date}`)
-  if (answers.name)      lines.push(`Customer name: ${answers.name}`)
+  if (answers.name)          lines.push(`Customer name: ${answers.name}`)
   return lines.join('\n')
 }
 
@@ -525,33 +527,12 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
     }
   }
 
-  // ── OTHER: details step ───────────────────────────────────────────────────
+  // ── OTHER / UNRECOGNISED: collect all details in one message ──────────────
   if (state === 'OTHER_AWAITING_DETAILS') {
-    const updatedAnswers: Record<string, string> = { ...answers, details: m }
-    if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
-
-    return {
-      reply: `Got it! When do you need it by?`,
-      nextState: 'OTHER_AWAITING_DATE',
-      nextContext: { ...context, enquiryAnswers: updatedAnswers },
-      done: false,
+    const finalAnswers: Record<string, string> = {
+      details: m.trim().slice(0, 500),
+      photoUrl: p.mediaUrl ?? '',
     }
-  }
-
-  // ── OTHER: date step ──────────────────────────────────────────────────────
-  if (state === 'OTHER_AWAITING_DATE') {
-    return {
-      reply: `And your name please?`,
-      nextState: 'OTHER_AWAITING_NAME',
-      nextContext: { ...context, enquiryAnswers: { ...answers, date: m } },
-      done: false,
-    }
-  }
-
-  // ── OTHER: name step → done ───────────────────────────────────────────────
-  if (state === 'OTHER_AWAITING_NAME') {
-    const name = m.split(' ')[0]
-    const finalAnswers = { ...answers, name: m }
 
     await saveEnquiryAndNotify({
       tenantId: p.tenantId,
@@ -563,7 +544,7 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
     })
 
     return {
-      reply: `Thank you, ${name}! 🙏 We've noted everything down.\n\nThe owner will reach out to you shortly. 😊`,
+      reply: `Thank you! 🙏 Our team has received your message and will reach out to you shortly. 😊`,
       nextState: 'IDLE',
       nextContext: {},
       done: true,
