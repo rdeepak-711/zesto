@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import EnquiryFlowTree from './EnquiryFlowTree'
 
 type BotMessage = { key: string; label: string; value: string }
 
@@ -30,45 +31,6 @@ const EDITABLE_STEPS = [
     trigger: 'no keyword match',
     triggerColor: 'bg-slate-100 text-slate-600 border-slate-200',
     keys: [{ key: 'enquiry_other', hint: undefined }],
-  },
-]
-
-// Visual flow overview — read-only
-const FLOW_OVERVIEW = [
-  {
-    product: 'Photo Frame 🖼️',
-    color: 'border-blue-200 bg-blue-50',
-    labelColor: 'text-blue-700 bg-blue-100',
-    steps: [
-      'Customer mentions frame → bot asks for size (or picks it from photo)',
-      'Customer shares photo → bot checks aspect ratio, suggests better size if needed',
-      'When do you need it by?',
-      'And your name please?',
-    ],
-    outcome: 'Summary saved · Owner notified with size, photo, date & name',
-  },
-  {
-    product: 'Acrylic 🎨',
-    color: 'border-purple-200 bg-purple-50',
-    labelColor: 'text-purple-700 bg-purple-100',
-    steps: [
-      'Customer mentions acrylic → bot describes what we offer (clocks, cutouts, lamps, prints)',
-      'Customer describes what they want (in their own words)',
-      'When do you need it by?',
-      'And your name please?',
-    ],
-    outcome: 'Summary saved · Owner notified with full details',
-  },
-  {
-    product: 'Anything else 💬',
-    color: 'border-gray-200 bg-gray-50',
-    labelColor: 'text-gray-600 bg-gray-100',
-    steps: [
-      'Bot asks for full details — size, occasion, special requirements',
-      'When do you need it by?',
-      'And your name please?',
-    ],
-    outcome: 'Summary saved · Owner notified',
   },
 ]
 
@@ -220,53 +182,7 @@ export default function BotEnquiryEditor({ initialMessages }: { initialMessages:
       </div>
 
       {/* Questionnaire flow overview */}
-      <div className="bg-white border border-gray-200 rounded-xl overflow-hidden">
-        <button
-          className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
-          onClick={() => setShowFlow(f => !f)}
-        >
-          <div className="w-6 h-6 rounded-full bg-gray-100 flex items-center justify-center flex-shrink-0">
-            <span className="text-[11px]">🗺</span>
-          </div>
-          <div className="flex-1">
-            <div className="text-sm font-semibold text-gray-800">Questionnaire flow</div>
-            <div className="text-[11px] text-gray-400 mt-0.5">What the bot asks for each product type</div>
-          </div>
-          <span className="text-[10px] font-semibold text-gray-400 bg-gray-100 px-2 py-0.5 rounded-full mr-1">read-only</span>
-          <span className={`text-xs text-gray-300 transition-transform ${showFlow ? 'rotate-180' : ''}`}>▾</span>
-        </button>
-
-        {showFlow && (
-          <div className="px-4 pb-4 pt-1 border-t border-gray-100 space-y-3">
-            <p className="text-[11px] text-gray-400 leading-snug mb-3">
-              These steps are automatic — the bot guides the customer through them in sequence.
-              Photo uploads trigger an aspect-ratio check that suggests the best frame size.
-            </p>
-            {FLOW_OVERVIEW.map((flow, i) => (
-              <div key={i} className={`border rounded-xl p-3 ${flow.color}`}>
-                <div className="flex items-center gap-2 mb-2">
-                  <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${flow.labelColor}`}>
-                    {flow.product}
-                  </span>
-                </div>
-                <div className="flex flex-col gap-1 mb-2">
-                  {flow.steps.map((step, j) => (
-                    <div key={j} className="flex items-start gap-2">
-                      <span className="text-[10px] font-bold text-gray-400 mt-0.5 flex-shrink-0">
-                        {j + 1}.
-                      </span>
-                      <span className="text-[11px] text-gray-600 leading-snug">{step}</span>
-                    </div>
-                  ))}
-                </div>
-                <div className="text-[10px] text-gray-500 border-t border-black/5 pt-2 mt-1">
-                  ✓ {flow.outcome}
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
+      <EnquiryFlowTree />
 
     </div>
   )
