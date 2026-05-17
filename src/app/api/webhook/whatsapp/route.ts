@@ -637,7 +637,9 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const isFrameQuery = /photo\s*frame|frame/i.test(body)
+    const keywordsRaw = messages['enquiry_keywords'] ?? ''
+    const keywords = keywordsRaw.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+    const isFrameQuery = keywords.length > 0 && keywords.some(kw => body.toLowerCase().includes(kw))
 
     let reply: string
     if (isFrameQuery) {

@@ -72,6 +72,11 @@ async function main() {
       value: 'true',
     },
     {
+      key: 'enquiry_keywords',
+      label: 'Keywords that trigger the catalog reply (comma-separated)',
+      value: 'frame,photo frame',
+    },
+    {
       key: 'enquiry_frame',
       label: 'Reply when customer asks about frames/pricing',
       value: `📐 *Our Photo Frame Sizes & Prices:*\n\n{pricing}\n\n🙏 The owner will reach out to you shortly!`,
