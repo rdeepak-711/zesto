@@ -45,6 +45,8 @@ const FRAME_GROUPS = [
   { num: 6, label: 'Twin / Miniature frames' },
 ]
 
+const SIZE_OPTIONS = ['4×6','5×7','6×8','8×10','10×12','12×15','12×18','16×20','20×24','20×30']
+
 const FRAME_GROUP_MENU =
   'Which type of frame are you interested in?\n\n' +
   FRAME_GROUPS.map(g => `${g.num}. ${g.label}`).join('\n') +
@@ -335,10 +337,9 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
 
   // ── PHOTO FRAME: size ─────────────────────────────────────────────────────
   if (state === 'PF_AWAITING_SIZE') {
-    const SIZE_OPTIONS = ['4×6','5×7','6×8','8×10','10×12','12×15','12×18','16×20','20×24','20×30']
     const n = parseInt(m, 10)
     let sizeLabel: string
-    if (!isNaN(n) && n >= 1 && n <= SIZE_OPTIONS.length) {
+    if (!isNaN(n) && n >= 1 && n <= 10) {
       sizeLabel = SIZE_OPTIONS[n - 1]
     } else if (n === 11 || m.toLowerCase().includes('custom')) {
       sizeLabel = 'Custom size'
@@ -359,7 +360,7 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
     const n = parseInt(m, 10)
     const occasionLabel = (!isNaN(n) && n >= 1 && n <= OCCASION_LABELS.length)
       ? OCCASION_LABELS[n - 1]
-      : m.trim() || 'Not specified'
+      : m.trim().slice(0, 80) || 'Not specified'
     return {
       reply: `How many pieces do you need?`,
       nextState: 'PF_AWAITING_QUANTITY',
@@ -371,7 +372,7 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
   // ── PHOTO FRAME: quantity ─────────────────────────────────────────────────
   if (state === 'PF_AWAITING_QUANTITY') {
     const qty = parseInt(m, 10)
-    const quantity = (!isNaN(qty) && qty > 0) ? String(qty) : m.trim() || '1'
+    const quantity = (!isNaN(qty) && qty > 0) ? String(qty) : m.trim().slice(0, 20) || '1'
     return {
       reply: `Would you like to share a photo now? 📸 (Optional — you can send it later too. Just type *skip* to continue.)`,
       nextState: 'PF_AWAITING_PHOTO',
@@ -420,7 +421,7 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
       customerPhone: p.customerPhone,
       ownerPhone: p.ownerPhone,
       whatsappNumber: p.whatsappNumber,
-      product: `Photo Frame — ${finalAnswers.frameType ?? ''}`,
+      product: finalAnswers.frameType ? `Photo Frame — ${finalAnswers.frameType}` : 'Photo Frame',
       answers: finalAnswers,
     })
 
