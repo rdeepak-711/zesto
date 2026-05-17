@@ -200,16 +200,22 @@ type EnquiryResult = {
 export const ENQUIRY_STATES = [
   'AWAITING_CATEGORY',
   'ENQUIRY_LISTENING',
+  // Photo Frame flow
+  'PF_AWAITING_TYPE',
   'PF_AWAITING_SIZE',
+  'PF_AWAITING_OCCASION',
+  'PF_AWAITING_QUANTITY',
   'PF_AWAITING_PHOTO',
-  'PF_AWAITING_DATE',
   'PF_AWAITING_NAME',
-  'AC_AWAITING_DETAILS',
-  'AC_AWAITING_DATE',
+  // Acrylic flow
+  'AC_AWAITING_TYPE',
+  'AC_AWAITING_SPEC',
+  'AC_AWAITING_OCCASION',
+  'AC_AWAITING_QUANTITY',
+  'AC_AWAITING_PHOTO',
   'AC_AWAITING_NAME',
+  // Unrecognised flow
   'OTHER_AWAITING_DETAILS',
-  'OTHER_AWAITING_DATE',
-  'OTHER_AWAITING_NAME',
 ]
 
 // ── Main handler ──────────────────────────────────────────────────────────────
