@@ -687,6 +687,53 @@ Rules:
     businessName: tenant.businessName,
   })
 
+  // ── Enquiry catch-all ─────────────────────────────────────────────────────
+  // Enabled per-tenant by setting the 'enquiry_reply' bot message to a non-empty value.
+  // When an unrecognised non-numeric message arrives at AWAITING_CATEGORY (customer
+  // ignored the menu), save it as a Custom Order so the owner sees it on the dashboard.
+  const enquiryReply = messages['enquiry_reply']
+  if (
+    enquiryReply &&
+    session.state === 'AWAITING_CATEGORY' &&
+    output.nextState === 'AWAITING_CATEGORY' &&
+    !/^\d+$/.test(body.trim())
+  ) {
+    const customCat = categories.find(c => c.isCustom)
+    const customItem = customCat ? menuItems.find(i => i.categoryId === customCat.id) : null
+    if (customItem) {
+      const prevOrderForName = await db.order.findFirst({
+        where: { tenantId: tenant.id, customerPhone },
+        orderBy: { createdAt: 'desc' },
+        select: { customerName: true },
+      })
+      const enquiryOrder = await db.order.create({
+        data: {
+          tenantId: tenant.id,
+          customerPhone,
+          customerName: prevOrderForName?.customerName ?? 'WhatsApp Enquiry',
+          totalAmount: 0,
+          notes: body,
+          paymentMethod: 'ONLINE',
+          items: {
+            create: [{ menuItemId: customItem.id, name: 'Enquiry', price: 0, quantity: 1, fieldsJson: '[]' }],
+          },
+        },
+      })
+      await notifyBaker(
+        enquiryOrder.id,
+        [{ menuItemId: customItem.id, name: `Enquiry: ${body}`, price: 0, quantity: 1, fields: [] }],
+        0,
+        customerPhone,
+        tenant.ownerPhone,
+        tenant.whatsappNumber,
+      )
+    }
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: enquiryReply, direction: 'OUT' } })
+    await sendWhatsApp(customerPhone, enquiryReply, tenant.whatsappNumber)
+    await resetSession(customerPhone, tenant.id)
+    return new NextResponse('', { status: 200 })
+  }
+
   if (output.placeOrder) {
     const isCustom = !!output.context.customDescription
     const customDescription = output.context.customDescription
