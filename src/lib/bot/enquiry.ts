@@ -1,11 +1,10 @@
 /**
- * Conversational enquiry handler for Phoenix Photo Studio.
+ * Enquiry handler for Phoenix Photo Studio.
  *
- * Philosophy: customer leads, bot follows.
- * - No forced welcome. Bot reacts to the customer's first message.
- * - Detect product intent from natural language, never force numbered menus.
- * - Collect name + date organically at the end of each flow.
- * - Save a clean summary to the order notes & notify owner.
+ * Flow: customer's first message is keyword-routed to a numbered menu.
+ * - Photo Frames: type (6 groups) → size → occasion → quantity → optional photo → name
+ * - Acrylic: type (10 products) → spec → occasion → quantity → optional photo → name
+ * - Unrecognised: single free-text capture → owner alert
  */
 
 import { db } from '@/lib/db'
@@ -267,8 +266,6 @@ export const ENQUIRY_STATES = [
 export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<EnquiryResult | null> {
   const { body, state, context } = p
   const m = body.trim()
-  const answers: Record<string, string> = context.enquiryAnswers ?? {}
-  const product = context.enquiryProduct ?? ''
   const keywords = p.messages['enquiry_keywords'] ?? 'frame,photo frame,acrylic'
 
   // ── IDLE: first message from customer ─────────────────────────────────────
@@ -531,7 +528,7 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
   if (state === 'OTHER_AWAITING_DETAILS') {
     const finalAnswers: Record<string, string> = {
       details: m.trim().slice(0, 500),
-      photoUrl: p.mediaUrl ?? '',
+      ...(p.mediaUrl ? { photoUrl: p.mediaUrl } : {}),
     }
 
     await saveEnquiryAndNotify({

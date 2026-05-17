@@ -116,7 +116,6 @@ export default function BotEnquiryEditor({ initialMessages }: { initialMessages:
   )
   const labels = Object.fromEntries(initialMessages.map(m => [m.key, m.label]))
   const [openStep, setOpenStep] = useState<number>(1)
-  const [showFlow, setShowFlow] = useState(false)
 
   async function saveMessage(key: string, value: string) {
     await fetch(`/api/bot-messages/${key}`, {
