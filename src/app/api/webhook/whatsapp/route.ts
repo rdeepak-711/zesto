@@ -600,14 +600,18 @@ export async function POST(req: NextRequest) {
 
   // ── Enquiry mode ─────────────────────────────────────────────────────────
   // Enabled per-tenant via the 'enquiry_mode' bot message (non-empty = on).
-  // Flow: customer sends any message → bot saves it as a Custom Order enquiry →
-  //   if message mentions frames/pricing: reply with full menu pricing list
-  //   otherwise: "owner will reach out shortly"
-  // Both paths reset the session so each message is treated as a fresh enquiry.
-  if (
-    messages['enquiry_mode'] &&
-    (session.state === 'IDLE' || session.state === 'AWAITING_CATEGORY')
-  ) {
+  // IDLE: show welcome question, advance to AWAITING_CATEGORY.
+  // AWAITING_CATEGORY: save customer's message as enquiry, reply with catalog
+  //   or generic acknowledgment based on 'enquiry_keywords'.
+  if (messages['enquiry_mode'] && session.state === 'IDLE') {
+    const welcomeMsg = messages['welcome'] ?? `👋 Welcome to ${tenant.businessName}! What are you looking for today?`
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: welcomeMsg, direction: 'OUT' } })
+    await sendWhatsApp(customerPhone, welcomeMsg, tenant.whatsappNumber)
+    await saveSession(customerPhone, 'AWAITING_CATEGORY', [], {}, tenant.id)
+    return new NextResponse('', { status: 200 })
+  }
+
+  if (messages['enquiry_mode'] && session.state === 'AWAITING_CATEGORY') {
     const customCat = categories.find(c => c.isCustom)
     const customItem = customCat ? menuItems.find(i => i.categoryId === customCat.id) : null
     if (customItem) {
