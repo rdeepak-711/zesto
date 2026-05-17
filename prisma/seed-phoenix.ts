@@ -43,7 +43,7 @@ async function main() {
       data: {
         businessName: 'Phoenix Photo Studio',
         businessType: 'photo studio',
-        ownerPhone: '+917010948386',
+        ownerPhone: '+917010044626',
         // Placeholder — replace with actual Twilio WhatsApp number when provisioned
         whatsappNumber: '+917010948386',
         currency: 'INR',
@@ -128,7 +128,7 @@ async function main() {
     console.log(`    + ${frame.name}: ₹${frame.price}`)
   }
 
-  console.log(`\nDone. Login with +917010948386 via OTP.\n`)
+  console.log(`\nDone. Login with +917010044626 via OTP.\n`)
   console.log('Next steps:')
   console.log('  1. Log in to dashboard → Settings → Integrations → enter Razorpay keys')
   console.log('  2. When Twilio number is provisioned, update whatsappNumber via Settings')
