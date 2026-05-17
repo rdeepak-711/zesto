@@ -433,47 +433,92 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
     }
   }
 
-  // ── ACRYLIC: details step ─────────────────────────────────────────────────
-  if (state === 'AC_AWAITING_DETAILS') {
-    const updatedAnswers: Record<string, string> = { ...answers, details: m }
-
-    // If they also sent a photo, save the URL
-    if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
-
+  // ── ACRYLIC: type selection ───────────────────────────────────────────────
+  if (state === 'AC_AWAITING_TYPE') {
+    const n = parseInt(m, 10)
+    if (isNaN(n) || n < 1 || n > ACRYLIC_TYPES.length) {
+      return {
+        reply: `Please reply with a number between 1 and ${ACRYLIC_TYPES.length}.\n\n${ACRYLIC_TYPE_MENU}`,
+        nextState: 'AC_AWAITING_TYPE',
+        nextContext: context,
+        done: false,
+      }
+    }
+    const product = ACRYLIC_TYPES[n - 1]
     return {
-      reply: `Lovely! When do you need it by?`,
-      nextState: 'AC_AWAITING_DATE',
+      reply: product.specPrompt,
+      nextState: 'AC_AWAITING_SPEC',
+      nextContext: { ...context, enquiryProduct: `Acrylic — ${product.label}`, enquiryAnswers: { acrylicType: product.label } },
+      done: false,
+    }
+  }
+
+  // ── ACRYLIC: spec/size ────────────────────────────────────────────────────
+  if (state === 'AC_AWAITING_SPEC') {
+    const updatedAnswers: Record<string, string> = { ...context.enquiryAnswers, spec: m.trim().slice(0, 100) }
+    if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
+    return {
+      reply: OCCASION_MENU,
+      nextState: 'AC_AWAITING_OCCASION',
       nextContext: { ...context, enquiryAnswers: updatedAnswers },
       done: false,
     }
   }
 
-  // ── ACRYLIC: date step ────────────────────────────────────────────────────
-  if (state === 'AC_AWAITING_DATE') {
+  // ── ACRYLIC: occasion ─────────────────────────────────────────────────────
+  if (state === 'AC_AWAITING_OCCASION') {
+    const n = parseInt(m, 10)
+    const occasionLabel = (!isNaN(n) && n >= 1 && n <= OCCASION_LABELS.length)
+      ? OCCASION_LABELS[n - 1]
+      : m.trim().slice(0, 80) || 'Not specified'
     return {
-      reply: `And your name please?`,
-      nextState: 'AC_AWAITING_NAME',
-      nextContext: { ...context, enquiryAnswers: { ...answers, date: m } },
+      reply: `How many pieces do you need?`,
+      nextState: 'AC_AWAITING_QUANTITY',
+      nextContext: { ...context, enquiryAnswers: { ...context.enquiryAnswers, occasion: occasionLabel } },
       done: false,
     }
   }
 
-  // ── ACRYLIC: name step → done ─────────────────────────────────────────────
+  // ── ACRYLIC: quantity ─────────────────────────────────────────────────────
+  if (state === 'AC_AWAITING_QUANTITY') {
+    const qty = parseInt(m, 10)
+    const quantity = (!isNaN(qty) && qty > 0) ? String(qty) : m.trim().slice(0, 20) || '1'
+    return {
+      reply: `Would you like to share a photo or design reference? 📸 (Optional — type *skip* to continue.)`,
+      nextState: 'AC_AWAITING_PHOTO',
+      nextContext: { ...context, enquiryAnswers: { ...context.enquiryAnswers, quantity } },
+      done: false,
+    }
+  }
+
+  // ── ACRYLIC: photo (optional) ─────────────────────────────────────────────
+  if (state === 'AC_AWAITING_PHOTO') {
+    const updatedAnswers: Record<string, string> = { ...context.enquiryAnswers }
+    if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
+    return {
+      reply: `And your name please?`,
+      nextState: 'AC_AWAITING_NAME',
+      nextContext: { ...context, enquiryAnswers: updatedAnswers },
+      done: false,
+    }
+  }
+
+  // ── ACRYLIC: name → done ──────────────────────────────────────────────────
   if (state === 'AC_AWAITING_NAME') {
     const name = m.split(' ')[0]
-    const finalAnswers = { ...answers, name: m }
+    const finalAnswers: Record<string, string> = { ...context.enquiryAnswers, name: m }
 
     await saveEnquiryAndNotify({
       tenantId: p.tenantId,
       customerPhone: p.customerPhone,
       ownerPhone: p.ownerPhone,
       whatsappNumber: p.whatsappNumber,
-      product: product || 'Acrylic',
+      product: context.enquiryProduct || 'Acrylic',
       answers: finalAnswers,
     })
 
     return {
-      reply: `Thank you, ${name}! 🙏 We've noted your enquiry${answers.date ? ` — needed by ${answers.date}` : ''}.\n\nThe owner will get back to you shortly to confirm the design and details. 😊`,
+      reply: `Thank you, ${name}! 🙏 We've noted your enquiry — *${finalAnswers.acrylicType ?? 'Acrylic product'}*, qty ${finalAnswers.quantity ?? '1'}, for *${finalAnswers.occasion ?? 'personal use'}*.\n\nOur team will reach out to you shortly. 😊`,
       nextState: 'IDLE',
       nextContext: {},
       done: true,
