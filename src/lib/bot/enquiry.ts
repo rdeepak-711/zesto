@@ -86,7 +86,7 @@ function isGreeting(text: string): boolean {
 // ── Acrylic keyword set (covers all product subtypes by common name) ──────────
 // High-priority subtypes: specific product names that override photo_frame keywords.
 const ACRYLIC_SUBTYPE_KEYWORDS = [
-  'standee', 'cutout', 'wall clock', 'clock', 'bed lamp',
+  'standee', 'cutout', 'wall clock', 'clock', 'bed lamp', 'lamp',
   'table top', 'tabletop', 'light box', 'lightbox', 'flat print',
   'lamp gift', 'engraving', 'illusion', 'trophy', 'award',
   'cake topper', 'semi rec',

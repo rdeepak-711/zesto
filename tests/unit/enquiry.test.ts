@@ -19,6 +19,9 @@ describe('detectProduct — acrylic subtype routing', () => {
   it('routes "lamp" to acrylic', () => {
     expect(detectProduct('bed lamp please', PF_KEYWORDS)).toBe('acrylic')
   })
+  it('routes bare "lamp" to acrylic', () => {
+    expect(detectProduct('I want a lamp', PF_KEYWORDS)).toBe('acrylic')
+  })
   it('routes "cake topper" to acrylic', () => {
     expect(detectProduct('cake topper for wedding', PF_KEYWORDS)).toBe('acrylic')
   })
