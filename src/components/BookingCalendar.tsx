@@ -36,10 +36,12 @@ function getFirstDayOfMonth(year: number, month: number) {
 const MONTH_NAMES = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec']
 
 function bookingMatchesDay(booking: Booking, year: number, month: number, day: number): boolean {
-  const dateStr = `${day} ${MONTH_NAMES[month]}`
-  const dateStr2 = `${String(year)}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
-  const src = (booking.confirmedDate || booking.preferredDate).toLowerCase()
-  return src.includes(dateStr.toLowerCase()) || src.includes(dateStr2)
+  const isoDate = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const src = (booking.confirmedDate || booking.preferredDate) ?? ''
+  if (src.includes(isoDate)) return true
+  // Word-boundary match: \b2\b won't match "22", preventing false positives
+  const wordPattern = new RegExp(`\\b${day}\\b.*\\b${MONTH_NAMES[month]}\\b`, 'i')
+  return wordPattern.test(src)
 }
 
 export default function BookingCalendar({ initialBookings }: { initialBookings: Booking[] }) {
@@ -60,9 +62,16 @@ export default function BookingCalendar({ initialBookings }: { initialBookings: 
   }
 
   async function refresh() {
-    const res = await fetch('/api/bookings')
-    const data = await res.json()
-    setBookings(data.bookings)
+    try {
+      const res = await fetch('/api/bookings')
+      if (!res.ok) return
+      const data = await res.json()
+      if (Array.isArray(data.bookings)) {
+        setBookings(data.bookings)
+      }
+    } catch {
+      // silent fail — stale bookings remain visible, user can reload
+    }
     setSelected(null)
   }
 

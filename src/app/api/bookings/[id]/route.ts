@@ -27,10 +27,18 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     select: { whatsappNumber: true },
   })
 
-  const body = await req.json() as {
-    status?: 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
-    confirmedDate?: string
-    confirmedTime?: string
+  const rawBody = await req.json() as {
+    status?: unknown
+    confirmedDate?: unknown
+    confirmedTime?: unknown
+  }
+  const VALID_STATUSES = new Set(['CONFIRMED', 'CANCELLED', 'COMPLETED'])
+  const body = {
+    status: (typeof rawBody.status === 'string' && VALID_STATUSES.has(rawBody.status))
+      ? rawBody.status as 'CONFIRMED' | 'CANCELLED' | 'COMPLETED'
+      : undefined,
+    confirmedDate: typeof rawBody.confirmedDate === 'string' ? rawBody.confirmedDate : undefined,
+    confirmedTime: typeof rawBody.confirmedTime === 'string' ? rawBody.confirmedTime : undefined,
   }
 
   const botMessages = await db.botMessage.findMany({ where: { tenantId: auth.tenantId } })
@@ -49,15 +57,20 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const d = body.confirmedDate || booking.confirmedDate || booking.preferredDate
   const t = body.confirmedTime || booking.confirmedTime || booking.preferredTime
 
-  if (body.status === 'CONFIRMED') {
-    const msg = fill(messages['booking_confirmed'] ?? '✅ Your appointment is confirmed for *{date}* at *{time}*. See you soon! 💅', { date: d, time: t })
-    await sendWhatsApp(booking.customerPhone, msg, from)
-  } else if (body.status === 'CANCELLED') {
-    const msg = messages['booking_cancelled'] ?? 'Your booking has been cancelled. Feel free to book again anytime 🙏'
-    await sendWhatsApp(booking.customerPhone, msg, from)
-  } else if (body.confirmedDate || body.confirmedTime) {
-    const msg = fill(messages['booking_rescheduled'] ?? 'Your appointment has been moved to *{date}* at *{time}*. See you then!', { date: d, time: t })
-    await sendWhatsApp(booking.customerPhone, msg, from)
+  try {
+    if (body.status === 'CONFIRMED') {
+      const msg = fill(messages['booking_confirmed'] ?? '✅ Your appointment is confirmed for *{date}* at *{time}*. See you soon! 💅', { date: d, time: t })
+      await sendWhatsApp(booking.customerPhone, msg, from)
+    } else if (body.status === 'CANCELLED') {
+      const msg = messages['booking_cancelled'] ?? 'Your booking has been cancelled. Feel free to book again anytime 🙏'
+      await sendWhatsApp(booking.customerPhone, msg, from)
+    } else if (body.confirmedDate || body.confirmedTime) {
+      const msg = fill(messages['booking_rescheduled'] ?? 'Your appointment has been moved to *{date}* at *{time}*. See you then!', { date: d, time: t })
+      await sendWhatsApp(booking.customerPhone, msg, from)
+    }
+  } catch (notifyErr) {
+    console.error('[bookings PATCH] WhatsApp notification failed:', notifyErr)
+    // booking is already updated — return success, notification was best-effort
   }
 
   const updated = await db.booking.findUnique({ where: { id } })
