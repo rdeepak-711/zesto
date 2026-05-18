@@ -3,30 +3,31 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-const NAV = [
-  {
-    section: 'Main',
-    items: [
-      { href: '/dashboard', label: 'Orders', icon: '🛍️', exact: true },
-      { href: '/dashboard/conversations', label: 'Conversations', icon: '💬' },
-      { href: '/dashboard/customers', label: 'Customers', icon: '👥' },
-      { href: '/dashboard/broadcast', label: 'Broadcast', icon: '📣' },
-    ],
-  },
-  {
-    section: 'Business',
-    items: [
-      { href: '/dashboard/menu', label: 'Menu', icon: '🍰' },
-      { href: '/dashboard/bot', label: 'Bot Script', icon: '🤖' },
-      { href: '/dashboard/discounts', label: 'Discounts', icon: '🏷️' },
-      { href: '/dashboard/analytics', label: 'Analytics', icon: '📊' },
-      { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
-    ],
-  },
-]
-
-export default function Sidebar({ pendingCount = 0, businessName = 'Dashboard' }: { pendingCount?: number; businessName?: string }) {
+export default function Sidebar({ pendingCount = 0, businessName = 'Dashboard', hasBooking = false }: { pendingCount?: number; businessName?: string; hasBooking?: boolean }) {
   const pathname = usePathname()
+
+  const NAV = [
+    {
+      section: 'Main',
+      items: [
+        { href: '/dashboard', label: 'Orders', icon: '🛍️', exact: true },
+        ...(hasBooking ? [{ href: '/dashboard/bookings', label: 'Bookings', icon: '📅', exact: false }] : []),
+        { href: '/dashboard/conversations', label: 'Conversations', icon: '💬' },
+        { href: '/dashboard/customers', label: 'Customers', icon: '👥' },
+        { href: '/dashboard/broadcast', label: 'Broadcast', icon: '📣' },
+      ],
+    },
+    {
+      section: 'Business',
+      items: [
+        { href: '/dashboard/menu', label: 'Menu', icon: '🍰' },
+        { href: '/dashboard/bot', label: 'Bot Script', icon: '🤖' },
+        { href: '/dashboard/discounts', label: 'Discounts', icon: '🏷️' },
+        { href: '/dashboard/analytics', label: 'Analytics', icon: '📊' },
+        { href: '/dashboard/settings', label: 'Settings', icon: '⚙️' },
+      ],
+    },
+  ]
 
   function isActive(href: string, exact?: boolean) {
     return exact ? pathname === href : pathname.startsWith(href)
