@@ -440,6 +440,37 @@ export async function POST(req: NextRequest) {
 
   await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN' } })
 
+  // ── Enquiry mode ─────────────────────────────────────────────────────────
+  // Customer leads — bot reacts to what they say, no forced welcome.
+  // IDLE state is passed directly to the enquiry handler which detects intent.
+  if (messages['enquiry_mode'] === 'true' && (session.state === 'IDLE' || ENQUIRY_STATES.includes(session.state))) {
+    const result = await handleEnquiryState({
+      tenantId: tenant.id,
+      customerPhone,
+      ownerPhone: tenant.ownerPhone,
+      whatsappNumber: tenant.whatsappNumber,
+      body,
+      mediaUrl,
+      numMedia,
+      state: session.state,
+      context: session.context as Parameters<typeof handleEnquiryState>[0]['context'],
+      messages,
+      twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
+      twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
+    })
+
+    if (result) {
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: result.reply, direction: 'OUT' } })
+      await sendWhatsApp(customerPhone, result.reply, tenant.whatsappNumber)
+      if (result.done) {
+        await resetSession(customerPhone, tenant.id)
+      } else {
+        await saveSession(customerPhone, result.nextState, session.cart, result.nextContext, tenant.id)
+      }
+      return new NextResponse('', { status: 200 })
+    }
+  }
+
   // ── Feedback collection (1-5 rating for completed order) ─────────────────
   const rating = parseInt(body.trim(), 10)
   if (rating >= 1 && rating <= 5) {
@@ -599,37 +630,6 @@ export async function POST(req: NextRequest) {
     await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply, tenant.whatsappNumber)
     return new NextResponse('', { status: 200 })
-  }
-
-  // ── Enquiry mode ─────────────────────────────────────────────────────────
-  // Customer leads — bot reacts to what they say, no forced welcome.
-  // IDLE state is passed directly to the enquiry handler which detects intent.
-  if (messages['enquiry_mode'] && (session.state === 'IDLE' || ENQUIRY_STATES.includes(session.state))) {
-    const result = await handleEnquiryState({
-      tenantId: tenant.id,
-      customerPhone,
-      ownerPhone: tenant.ownerPhone,
-      whatsappNumber: tenant.whatsappNumber,
-      body,
-      mediaUrl,
-      numMedia,
-      state: session.state,
-      context: session.context as Parameters<typeof handleEnquiryState>[0]['context'],
-      messages,
-      twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
-      twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
-    })
-
-    if (result) {
-      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: result.reply, direction: 'OUT' } })
-      await sendWhatsApp(customerPhone, result.reply, tenant.whatsappNumber)
-      if (result.done) {
-        await resetSession(customerPhone, tenant.id)
-      } else {
-        await saveSession(customerPhone, result.nextState, session.cart, result.nextContext, tenant.id)
-      }
-      return new NextResponse('', { status: 200 })
-    }
   }
 
   // ── AI intent parser (natural language → fast-track to confirmation) ──────
