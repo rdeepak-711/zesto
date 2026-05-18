@@ -46,6 +46,9 @@ const FRAME_GROUPS = [
 
 const SIZE_OPTIONS = ['4×6','5×7','6×8','8×10','10×12','12×15','12×18','16×20','20×24','20×30']
 
+// Sizes eligible for photo-based suggestions — must match the numbered menu exactly
+const MENU_SIZES = FRAME_SIZES.filter(s => SIZE_OPTIONS.includes(s.name))
+
 const FRAME_GROUP_MENU =
   'Which type of frame are you interested in?\n\n' +
   FRAME_GROUPS.map(g => `${g.num}. ${g.label}`).join('\n') +
@@ -135,7 +138,7 @@ async function suggestFrameFromPhoto(
     if (!width || !height) return null
 
     const photoRatio = width / height
-    const best = FRAME_SIZES.reduce((prev, cur) => {
+    const best = MENU_SIZES.reduce((prev, cur) => {
       const cDiff = Math.abs(photoRatio - cur.w / cur.h)
       const pDiff = Math.abs(photoRatio - prev.w / prev.h)
       return cDiff < pDiff ? cur : prev
@@ -413,15 +416,26 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
 
     if (p.numMedia > 0 && p.mediaUrl) {
       updatedAnswers.photoUrl = p.mediaUrl
-      const currentSize = updatedAnswers.size ? FRAME_SIZES.find(s => s.label === updatedAnswers.size || s.name === updatedAnswers.size) : undefined
-      const suggestion = await suggestFrameFromPhoto(p.mediaUrl, p.twilioAccountSid, p.twilioAuthToken, currentSize)
-      let photoNote = `Got the photo! 📸`
-      if (suggestion?.isNew) {
-        updatedAnswers.suggestedSize = suggestion.bestFit.label
-        photoNote += ` Just a heads up — your photo might fit better in a *${suggestion.bestFit.label}* frame. We'll confirm when our team reaches out.`
+      if (updatedAnswers.size !== 'Custom size') {
+        const currentSize = updatedAnswers.size
+          ? FRAME_SIZES.find(s => s.label === updatedAnswers.size || s.name === updatedAnswers.size)
+          : undefined
+        const suggestion = await suggestFrameFromPhoto(p.mediaUrl, p.twilioAccountSid, p.twilioAuthToken, currentSize)
+        let photoNote = `Got the photo! 📸`
+        if (suggestion?.isNew) {
+          updatedAnswers.suggestedSize = suggestion.bestFit.label
+          photoNote += ` Just a heads up — your photo might fit better in a *${suggestion.bestFit.label}* frame. We'll confirm when our team reaches out.`
+        }
+        return {
+          reply: `${photoNote}\n\nAnd your name please?`,
+          nextState: 'PF_AWAITING_NAME',
+          nextContext: { ...context, enquiryAnswers: updatedAnswers },
+          done: false,
+        }
       }
+      // Custom size — just acknowledge the photo, no suggestion
       return {
-        reply: `${photoNote}\n\nAnd your name please?`,
+        reply: `Got the photo! 📸\n\nAnd your name please?`,
         nextState: 'PF_AWAITING_NAME',
         nextContext: { ...context, enquiryAnswers: updatedAnswers },
         done: false,

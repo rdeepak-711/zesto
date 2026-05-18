@@ -1,4 +1,8 @@
-import { describe, it, expect } from 'vitest'
+import { describe, it, expect, vi, beforeEach } from 'vitest'
+vi.mock('image-size', () => ({
+  imageSize: vi.fn(),
+}))
+import { imageSize } from 'image-size'
 import { detectProduct, handleEnquiryState, type EnquiryHandlerParams } from '@/lib/bot/enquiry'
 
 const BASE_PARAMS: EnquiryHandlerParams = {
@@ -128,5 +132,58 @@ describe('mid-flow reset keywords', () => {
       body: 'menu',
     })
     expect(result?.nextState).toBe('OTHER_AWAITING_DETAILS')
+  })
+})
+
+describe('PF_AWAITING_PHOTO — photo suggestion constraints', () => {
+  beforeEach(() => {
+    vi.resetAllMocks()
+  })
+
+  it('does NOT call fetch when size is "Custom size"', async () => {
+    const fetchSpy = vi.spyOn(global, 'fetch')
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'PF_AWAITING_PHOTO',
+      body: '',
+      numMedia: 1,
+      mediaUrl: 'https://media.example.com/photo.jpg',
+      context: {
+        enquiryProduct: 'Photo Frame',
+        enquiryAnswers: { frameType: 'MDF frames', size: 'Custom size' },
+      },
+    })
+    expect(fetchSpy).not.toHaveBeenCalled()
+    expect(result?.nextContext.enquiryAnswers?.suggestedSize).toBeUndefined()
+  })
+
+  it('suggestion is a size present in the numbered menu (not an off-menu size like 8×8)', async () => {
+    vi.mocked(imageSize).mockReturnValue({ width: 800, height: 800 })
+    vi.spyOn(global, 'fetch').mockResolvedValue({
+      ok: true,
+      arrayBuffer: async () => new ArrayBuffer(100),
+    } as unknown as Response)
+
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'PF_AWAITING_PHOTO',
+      body: '',
+      numMedia: 1,
+      mediaUrl: 'https://media.example.com/photo.jpg',
+      context: {
+        enquiryProduct: 'Photo Frame',
+        enquiryAnswers: { frameType: 'MDF frames', size: '8×10' },
+      },
+    })
+
+    const suggested = result?.nextContext.enquiryAnswers?.suggestedSize
+    if (suggested) {
+      const MENU_SIZE_LABELS = [
+        '4×6 inches','5×7 inches','6×8 inches','8×10 inches','10×12 inches',
+        '12×15 inches','12×18 inches','16×20 inches','20×24 inches','20×30 inches',
+      ]
+      expect(MENU_SIZE_LABELS).toContain(suggested)
+      expect(suggested).not.toBe('8×8 inches')
+    }
   })
 })
