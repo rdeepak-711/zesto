@@ -83,11 +83,24 @@ function isGreeting(text: string): boolean {
   return GREETING_PATTERNS.test(text.trim())
 }
 
-function detectProduct(text: string, enquiryKeywords: string): 'photo_frame' | 'acrylic' | 'other' {
+// ── Acrylic keyword set (covers all product subtypes by common name) ──────────
+// High-priority subtypes: specific product names that override photo_frame keywords.
+const ACRYLIC_SUBTYPE_KEYWORDS = [
+  'standee', 'cutout', 'wall clock', 'clock', 'bed lamp',
+  'table top', 'tabletop', 'light box', 'lightbox', 'flat print',
+  'lamp gift', 'engraving', 'illusion', 'trophy', 'award',
+  'cake topper', 'semi rec',
+]
+// Low-priority: generic category word; loses to photo_frame keywords.
+const ACRYLIC_GENERIC_KEYWORDS = ['acrylic']
+
+export function detectProduct(text: string, enquiryKeywords: string): 'photo_frame' | 'acrylic' | 'other' {
   const m = text.toLowerCase()
   const pfKeywords = enquiryKeywords.split(',').map(k => k.trim().toLowerCase()).filter(Boolean)
+  // Specific acrylic subtype names win over photo_frame keywords.
+  if (ACRYLIC_SUBTYPE_KEYWORDS.some(kw => m.includes(kw))) return 'acrylic'
   if (pfKeywords.some(kw => m.includes(kw))) return 'photo_frame'
-  if (m.includes('acrylic')) return 'acrylic'
+  if (ACRYLIC_GENERIC_KEYWORDS.some(kw => m.includes(kw))) return 'acrylic'
   return 'other'
 }
 
