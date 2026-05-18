@@ -281,6 +281,20 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
   const m = body.trim()
   const keywords = p.messages['enquiry_keywords'] ?? 'frame,photo frame,acrylic'
 
+  // ── Global reset keywords (only active mid-flow: PF_*, AC_*, OTHER_AWAITING_DETAILS) ────────────
+  const midFlowStates = ['PF_AWAITING_TYPE', 'PF_AWAITING_SIZE', 'PF_AWAITING_OCCASION', 'PF_AWAITING_QUANTITY', 'PF_AWAITING_PHOTO', 'PF_AWAITING_NAME', 'AC_AWAITING_TYPE', 'AC_AWAITING_SPEC', 'AC_AWAITING_OCCASION', 'AC_AWAITING_QUANTITY', 'AC_AWAITING_PHOTO', 'AC_AWAITING_NAME', 'OTHER_AWAITING_DETAILS']
+  if (midFlowStates.includes(state)) {
+    const mLower = m.toLowerCase()
+    if (mLower === 'menu' || mLower === 'start over') {
+      return {
+        reply: `Hey! 👋 What can we help you with today?`,
+        nextState: 'ENQUIRY_LISTENING',
+        nextContext: {},
+        done: false,
+      }
+    }
+  }
+
   // ── IDLE: first message from customer ─────────────────────────────────────
   // Called when state === 'IDLE' and enquiry_mode is on.
   if (state === 'IDLE') {

@@ -90,3 +90,43 @@ describe('AC_AWAITING_SPEC — photo-only message', () => {
     expect(result?.nextContext.enquiryAnswers?.spec).toBe('12 inches diameter')
   })
 })
+
+describe('mid-flow reset keywords', () => {
+  it('"menu" mid-frame-flow resets to ENQUIRY_LISTENING', async () => {
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'PF_AWAITING_SIZE',
+      body: 'menu',
+      context: {
+        enquiryProduct: 'Photo Frame',
+        enquiryAnswers: { frameType: 'MDF frames (table / wall / shadow)' },
+      },
+    })
+    expect(result?.nextState).toBe('ENQUIRY_LISTENING')
+    expect(result?.nextContext).toEqual({})
+    expect(result?.done).toBe(false)
+  })
+
+  it('"start over" mid-acrylic-flow resets to ENQUIRY_LISTENING', async () => {
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'AC_AWAITING_SPEC',
+      body: 'start over',
+      context: {
+        enquiryProduct: 'Acrylic — Acrylic wall clock',
+        enquiryAnswers: { acrylicType: 'Acrylic wall clock' },
+      },
+    })
+    expect(result?.nextState).toBe('ENQUIRY_LISTENING')
+    expect(result?.nextContext).toEqual({})
+  })
+
+  it('"menu" at IDLE is not treated as reset — falls through to OTHER_AWAITING_DETAILS', async () => {
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'IDLE',
+      body: 'menu',
+    })
+    expect(result?.nextState).toBe('OTHER_AWAITING_DETAILS')
+  })
+})
