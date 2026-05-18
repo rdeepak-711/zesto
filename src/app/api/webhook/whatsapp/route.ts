@@ -248,11 +248,71 @@ async function sendOwnerDetail(ownerPhone: string, tenant: Tenant, orderId: stri
   })
 }
 
+// ── Booking command handler ───────────────────────────────────────────────────
+
+async function handleBookingCommand(cmd: string, shortId: string, extra: string, ownerPhone: string, tenant: { id: string; whatsappNumber: string }, messages: Record<string, string>) {
+  const booking = await db.booking.findUnique({
+    where: { shortId },
+    include: { order: true },
+  })
+
+  if (!booking || booking.tenantId !== tenant.id) {
+    await sendWhatsApp(ownerPhone, `Booking ${shortId} not found.`, tenant.whatsappNumber)
+    return
+  }
+
+  const customerPhone = booking.customerPhone
+  const [datePart, timePart] = extra ? extra.split(/\s+/, 2) : [booking.preferredDate, booking.preferredTime]
+
+  if (cmd === 'confirm') {
+    await db.booking.update({
+      where: { shortId },
+      data: { status: 'CONFIRMED', confirmedDate: datePart || booking.preferredDate, confirmedTime: timePart || booking.preferredTime },
+    })
+    const d = datePart || booking.preferredDate
+    const t = timePart || booking.preferredTime
+    const customerMsg = fill(messages['booking_confirmed'] ?? '✅ Your appointment is confirmed for *{date}* at *{time}*. See you soon! 💅', { date: d, time: t })
+    await sendWhatsApp(customerPhone, customerMsg, tenant.whatsappNumber)
+    await sendWhatsApp(ownerPhone, `✅ Booking ${shortId} confirmed — ${d} ${t}. Customer notified.`, tenant.whatsappNumber)
+  } else if (cmd === 'reschedule') {
+    await db.booking.update({
+      where: { shortId },
+      data: { confirmedDate: datePart || booking.preferredDate, confirmedTime: timePart || booking.preferredTime },
+    })
+    const d = datePart || booking.preferredDate
+    const t = timePart || booking.preferredTime
+    const customerMsg = fill(messages['booking_rescheduled'] ?? 'Your appointment has been moved to *{date}* at *{time}*. See you then!', { date: d, time: t })
+    await sendWhatsApp(customerPhone, customerMsg, tenant.whatsappNumber)
+    await sendWhatsApp(ownerPhone, `📅 Booking ${shortId} rescheduled to ${d} ${t}. Customer notified.`, tenant.whatsappNumber)
+  } else if (cmd === 'cancel') {
+    await db.booking.update({ where: { shortId }, data: { status: 'CANCELLED' } })
+    const customerMsg = messages['booking_cancelled'] ?? 'Your booking has been cancelled. Feel free to book again anytime 🙏'
+    await sendWhatsApp(customerPhone, customerMsg, tenant.whatsappNumber)
+    await sendWhatsApp(ownerPhone, `❌ Booking ${shortId} cancelled. Customer notified.`, tenant.whatsappNumber)
+  }
+}
+
 // ── Main owner handler ────────────────────────────────────────────────────────
 
 async function handleOwnerReply(body: string, ownerPhone: string, tenant: Tenant) {
   const m = body.trim().toLowerCase()
   const { state, context } = await getOwnerSession(ownerPhone, tenant.id)
+
+  // Booking commands: confirm/reschedule/cancel <shortId> [date time]
+  const bookingMatch = body.trim().match(/^(confirm|reschedule|cancel)\s+([A-Z0-9-]+)(?:\s+(.+))?$/i)
+  if (bookingMatch) {
+    const botMessages = await db.botMessage.findMany({ where: { tenantId: tenant.id } })
+    const msgs = Object.fromEntries(botMessages.map((r) => [r.key, r.value]))
+    await handleBookingCommand(
+      bookingMatch[1].toLowerCase(),
+      bookingMatch[2].toUpperCase(),
+      (bookingMatch[3] ?? '').trim(),
+      ownerPhone,
+      tenant,
+      msgs,
+    )
+    return
+  }
 
   if (m === 'orders' || m === 'list' || m === 'menu') {
     await sendOwnerList(ownerPhone, tenant, 0)
@@ -735,6 +795,35 @@ Rules:
     hasBooking: tenant.hasBooking,
   })
 
+  // ── Slot availability enrichment ─────────────────────────────────────────
+  // When transitioning to AWAITING_BOOKING_TIME, enrich reply with slot counts
+  let fsmReply = output.reply
+  if (output.nextState === 'AWAITING_BOOKING_TIME' && output.context.bookingDate && tenant.hasBooking) {
+    const confirmedBookings = await db.booking.findMany({
+      where: { tenantId: tenant.id, status: 'CONFIRMED' },
+      select: { confirmedDate: true, confirmedTime: true },
+    })
+    const dateStr = (output.context.bookingDate ?? '').toLowerCase()
+    const relevant = confirmedBookings.filter((b) =>
+      (b.confirmedDate ?? '').toLowerCase().includes(dateStr) ||
+      dateStr.includes((b.confirmedDate ?? '').toLowerCase())
+    )
+    const counts = { morning: 0, afternoon: 0, evening: 0 }
+    for (const b of relevant) {
+      const t = (b.confirmedTime ?? '').toLowerCase()
+      if (t.includes('morning')) counts.morning++
+      else if (t.includes('afternoon')) counts.afternoon++
+      else if (t.includes('evening')) counts.evening++
+    }
+    const slot = (label: string, n: number) => n >= 3 ? `${label} ⚠️ Filling up` : `${label} ✅ Available`
+    const base = messages['booking_ask_time'] ?? 'What time works best?'
+    fsmReply =
+      `${base}\n\n` +
+      `1. ${slot('Morning (9am–12pm)', counts.morning)}\n` +
+      `2. ${slot('Afternoon (12pm–4pm)', counts.afternoon)}\n` +
+      `3. ${slot('Evening (4pm–8pm)', counts.evening)}`
+  }
+
   if (output.placeOrder) {
     const isCustom = !!output.context.customDescription
     const customDescription = output.context.customDescription
@@ -881,7 +970,7 @@ Rules:
     await saveSession(customerPhone, output.nextState, output.cart, output.context, tenant.id)
   }
 
-  let finalReply = output.reply
+  let finalReply = fsmReply
   if (output.placeOrder) {
     const footer = buildSocialFooter(tenant, messages['social_footer'] ?? '')
     if (footer) finalReply = `${output.reply}\n\n${footer}`
