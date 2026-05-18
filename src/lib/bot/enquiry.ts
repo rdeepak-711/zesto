@@ -467,7 +467,11 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
 
   // ── ACRYLIC: spec/size ────────────────────────────────────────────────────
   if (state === 'AC_AWAITING_SPEC') {
-    const updatedAnswers: Record<string, string> = { ...context.enquiryAnswers, spec: m.trim().slice(0, 100) }
+    const specText = m.trim() || (p.numMedia > 0 && p.mediaUrl ? '(photo reference)' : '')
+    const updatedAnswers: Record<string, string> = {
+      ...context.enquiryAnswers,
+      spec: specText.slice(0, 100),
+    }
     if (p.numMedia > 0 && p.mediaUrl) updatedAnswers.photoUrl = p.mediaUrl
     return {
       reply: OCCASION_MENU,

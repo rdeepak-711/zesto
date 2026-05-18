@@ -1,5 +1,20 @@
 import { describe, it, expect } from 'vitest'
-import { detectProduct } from '@/lib/bot/enquiry'
+import { detectProduct, handleEnquiryState, type EnquiryHandlerParams } from '@/lib/bot/enquiry'
+
+const BASE_PARAMS: EnquiryHandlerParams = {
+  tenantId: 'tenant-1',
+  customerPhone: '+919000000001',
+  ownerPhone: '+919000000099',
+  whatsappNumber: '+919000000002',
+  body: '',
+  mediaUrl: undefined,
+  numMedia: 0,
+  state: 'IDLE',
+  context: {},
+  messages: { enquiry_keywords: 'frame,photo frame' },
+  twilioAccountSid: 'ACtest',
+  twilioAuthToken: 'authtest',
+}
 
 const PF_KEYWORDS = 'frame,photo frame'
 
@@ -42,5 +57,36 @@ describe('detectProduct — acrylic subtype routing', () => {
   })
   it('photo_frame takes priority when keyword appears first', () => {
     expect(detectProduct('frame with acrylic glass', PF_KEYWORDS)).toBe('photo_frame')
+  })
+})
+
+describe('AC_AWAITING_SPEC — photo-only message', () => {
+  it('stores "(photo reference)" as spec when body is empty and media is attached', async () => {
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'AC_AWAITING_SPEC',
+      body: '',
+      numMedia: 1,
+      mediaUrl: 'https://media.example.com/ref.jpg',
+      context: {
+        enquiryProduct: 'Acrylic — Acrylic wall clock',
+        enquiryAnswers: { acrylicType: 'Acrylic wall clock' },
+      },
+    })
+    expect(result?.nextContext.enquiryAnswers?.spec).toBe('(photo reference)')
+  })
+
+  it('stores the typed text as spec when customer types a spec', async () => {
+    const result = await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'AC_AWAITING_SPEC',
+      body: '12 inches diameter',
+      numMedia: 0,
+      context: {
+        enquiryProduct: 'Acrylic — Acrylic wall clock',
+        enquiryAnswers: { acrylicType: 'Acrylic wall clock' },
+      },
+    })
+    expect(result?.nextContext.enquiryAnswers?.spec).toBe('12 inches diameter')
   })
 })
