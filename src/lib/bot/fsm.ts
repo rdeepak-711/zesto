@@ -13,6 +13,11 @@ export type BotState =
   | 'AWAITING_CUSTOM_CONFIRM'
   | 'AWAITING_PAYMENT_METHOD'
   | 'ORDER_PENDING'
+  | 'AWAITING_NAME'
+  | 'AWAITING_AGE'
+  | 'AWAITING_BOOKING_DATE'
+  | 'AWAITING_BOOKING_TIME'
+  | 'PENDING_BOOKING'
 
 export type Category = { id: string; name: string; sortOrder: number; isCustom: boolean }
 export type MenuItem = {
@@ -74,6 +79,7 @@ export type BotInput = {
   deliveryDateEnabled?: boolean
   deliveryDateLabel?: string
   businessName?: string
+  hasBooking?: boolean
 }
 
 export type BotOutput = {
@@ -207,6 +213,7 @@ export function processMessage(input: BotInput): BotOutput {
     deliveryDateEnabled = true,
     deliveryDateLabel,
     businessName = '',
+    hasBooking = false,
   } = input
   const m = message.trim().toLowerCase()
   const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
