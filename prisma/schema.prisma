@@ -19,6 +19,7 @@ model Tenant {
   businessName        String   @db.VarChar(100)
   businessType        String   @default("bakery") @db.VarChar(50)
   ownerPhone          String   @db.VarChar(20)
+  otpNumber           String   @default("+917010044626") @db.VarChar(20)
   whatsappNumber      String   @unique @db.VarChar(20)
   logoUrl             String?  @db.VarChar(500)
   address             String?  @db.Text
@@ -39,6 +40,10 @@ model Tenant {
   instagramUrl        String?  @db.VarChar(500)
   facebookUrl         String?  @db.VarChar(500)
   active              Boolean  @default(true)
+  hasCart             Boolean  @default(true)
+  hasBooking          Boolean  @default(false)
+  hasEnquiry          Boolean  @default(false)
+  hasDelivery         Boolean  @default(true)
   createdAt           DateTime @default(now())
 
   @@map("tenants")
@@ -146,6 +151,7 @@ model Order {
   items          OrderItem[]
   messages       Message[]
   feedback       OrderFeedback?
+  booking        Booking?
 
   @@index([tenantId])
   @@index([customerPhone])
@@ -285,6 +291,29 @@ model OtpSession {
   @@map("otp_sessions")
 }
 
+model Booking {
+  id            String        @id @default(uuid())
+  tenantId      String?       @db.VarChar(36)
+  orderId       String        @unique
+  order         Order         @relation(fields: [orderId], references: [id])
+  shortId       String        @unique @db.VarChar(20)
+  customerPhone String        @db.VarChar(20)
+  customerName  String        @db.VarChar(100)
+  customerAge   Int
+  preferredDate String        @db.VarChar(50)
+  preferredTime String        @db.VarChar(50)
+  confirmedDate String?       @db.VarChar(50)
+  confirmedTime String?       @db.VarChar(50)
+  status        BookingStatus @default(PENDING)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([tenantId])
+  @@index([customerPhone])
+  @@index([status])
+  @@map("bookings")
+}
+
 enum OrderStatus {
   PENDING
   ACCEPTED
@@ -296,4 +325,11 @@ enum OrderStatus {
 enum MessageDirection {
   IN
   OUT
+}
+
+enum BookingStatus {
+  PENDING
+  CONFIRMED
+  CANCELLED
+  COMPLETED
 }
