@@ -615,6 +615,7 @@ export function processMessage(input: BotInput): BotOutput {
       }
     }
 
+    // unreachable — handled by early intercept above; kept for switch exhaustiveness
     case 'PENDING_BOOKING': {
       return { reply: messages['booking_pending_reply'] ?? "Your booking is being reviewed. We'll confirm your exact time soon! 🌸", nextState: 'PENDING_BOOKING', cart, context, placeOrder: false }
     }

@@ -147,6 +147,12 @@ describe('FSM booking flow', () => {
     expect(out.placeOrder).toBe(true)
   })
 
+  it('cancel during AWAITING_NAME → IDLE with empty cart (designed behaviour)', () => {
+    const out = processMessage(base({ message: 'cancel', state: 'AWAITING_NAME', cart }))
+    expect(out.nextState).toBe('IDLE')
+    expect(out.cart).toHaveLength(0)
+  })
+
   it('PENDING_BOOKING any message → stays PENDING_BOOKING with reply', () => {
     const out = processMessage(base({ message: 'hello', state: 'PENDING_BOOKING', cart: [] }))
     expect(out.nextState).toBe('PENDING_BOOKING')
