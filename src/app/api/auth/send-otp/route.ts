@@ -12,18 +12,19 @@ export async function POST(req: NextRequest) {
   // Look up by ownerPhone first, then whatsappNumber as fallback (for test/demo numbers)
   let tenant = await db.tenant.findFirst({
     where: { ownerPhone: phone, active: true },
-    select: { id: true, ownerPhone: true },
+    select: { id: true, ownerPhone: true, otpNumber: true },
   })
 
   if (!tenant) {
     tenant = await db.tenant.findFirst({
       where: { whatsappNumber: phone, active: true },
-      select: { id: true, ownerPhone: true },
+      select: { id: true, ownerPhone: true, otpNumber: true },
     })
   }
 
   if (!tenant) return NextResponse.json({ ok: true })
 
-  await sendOtp(tenant.ownerPhone, tenant.id)
+  // OTP session stored against ownerPhone; message sent to otpNumber (dev override until bot delivered)
+  await sendOtp(tenant.ownerPhone, tenant.id, tenant.otpNumber)
   return NextResponse.json({ ok: true })
 }

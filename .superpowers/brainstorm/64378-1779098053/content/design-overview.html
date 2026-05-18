@@ -1,0 +1,122 @@
+<h2>Design — Unified FSM with Capability Flags</h2>
+<p class="subtitle">Service Orders + Appointment Booking for salons, generic for all business types</p>
+
+<div class="section">
+  <h3>1. Capability Flags on Tenant</h3>
+  <div style="background:#111;border-radius:8px;padding:14px;font-size:12px;font-family:monospace;color:#7ec8e3;line-height:1.9">
+    <span style="color:#aaa">// New columns on tenants table</span><br>
+    hasCart &nbsp;&nbsp;&nbsp;&nbsp;Boolean @default(true) &nbsp; <span style="color:#aaa">// can browse+order items</span><br>
+    hasBooking &nbsp;Boolean @default(false) &nbsp;<span style="color:#aaa">// booking step after checkout</span><br>
+    hasEnquiry &nbsp;Boolean @default(false) &nbsp;<span style="color:#aaa">// custom product enquiry flow</span><br>
+    hasDelivery Boolean @default(true) &nbsp; <span style="color:#aaa">// collect address + delivery date</span><br>
+    <br>
+    <span style="color:#aaa">// Presets (no code change needed for new types)</span><br>
+    Bakery:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; hasCart=✓ hasDelivery=✓<br>
+    Salon:&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; hasCart=✓ hasBooking=✓ hasDelivery=✗<br>
+    Photo Studio: hasEnquiry=✓ hasCart=✗<br>
+    Spa/Clinic:&nbsp; hasCart=✓ hasBooking=✓ hasDelivery=✗
+  </div>
+</div>
+
+<div class="section">
+  <h3>2. New Booking Table</h3>
+  <div style="background:#111;border-radius:8px;padding:14px;font-size:12px;font-family:monospace;color:#7ec8e3;line-height:1.9">
+    model Booking {<br>
+    &nbsp;&nbsp;id&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; String &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; @id @default(uuid())<br>
+    &nbsp;&nbsp;tenantId&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; String?<br>
+    &nbsp;&nbsp;orderId&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; String &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; @unique <span style="color:#aaa">// 1:1 with Order</span><br>
+    &nbsp;&nbsp;customerPhone String<br>
+    &nbsp;&nbsp;customerName &nbsp;String<br>
+    &nbsp;&nbsp;customerAge &nbsp;&nbsp;Int<br>
+    &nbsp;&nbsp;preferredDate String &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#aaa">// "2026-05-20"</span><br>
+    &nbsp;&nbsp;preferredTime String &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#aaa">// "afternoon" or "3pm"</span><br>
+    &nbsp;&nbsp;confirmedDate String? &nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#aaa">// set by owner</span><br>
+    &nbsp;&nbsp;confirmedTime String?<br>
+    &nbsp;&nbsp;status&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; BookingStatus @default(PENDING)<br>
+    &nbsp;&nbsp;createdAt&nbsp;&nbsp;&nbsp;&nbsp; DateTime &nbsp;&nbsp;&nbsp;&nbsp; @default(now())<br>
+    &nbsp;&nbsp;updatedAt&nbsp;&nbsp;&nbsp;&nbsp; DateTime &nbsp;&nbsp;&nbsp;&nbsp; @updatedAt<br>
+    }
+  </div>
+</div>
+
+<div class="section">
+  <h3>3. Bot Conversation Flow (Salon)</h3>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center;font-size:11px">
+    <div style="background:#0f3460;border-radius:6px;padding:10px">
+      <div style="font-size:18px">👋</div>
+      <div style="color:#e94560;font-weight:bold;margin:4px 0">IDLE</div>
+      <div style="color:#aaa">Greeting + service menu</div>
+    </div>
+    <div style="display:flex;align-items:center;color:#555;font-size:18px">→</div>
+    <div style="background:#0f3460;border-radius:6px;padding:10px">
+      <div style="font-size:18px">🛒</div>
+      <div style="color:#e94560;font-weight:bold;margin:4px 0">BROWSING</div>
+      <div style="color:#aaa">Pick services, add to cart, review</div>
+    </div>
+    <div style="display:flex;align-items:center;color:#555;font-size:18px">→</div>
+    <div style="background:#0f3460;border-radius:6px;padding:10px">
+      <div style="font-size:18px">👤</div>
+      <div style="color:#e94560;font-weight:bold;margin:4px 0">AWAITING_NAME</div>
+      <div style="color:#aaa">Collect name</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(5,1fr);gap:6px;text-align:center;font-size:11px;margin-top:6px">
+    <div style="background:#1a3a1a;border-radius:6px;padding:10px;border:1px solid #2a5a2a">
+      <div style="font-size:18px">🎂</div>
+      <div style="color:#5a5;font-weight:bold;margin:4px 0">AWAITING_AGE</div>
+      <div style="color:#aaa">New — salon only (hasBooking)</div>
+    </div>
+    <div style="display:flex;align-items:center;color:#555;font-size:18px">→</div>
+    <div style="background:#1a3a1a;border-radius:6px;padding:10px;border:1px solid #2a5a2a">
+      <div style="font-size:18px">📅</div>
+      <div style="color:#5a5;font-weight:bold;margin:4px 0">AWAITING_BOOKING_DATE</div>
+      <div style="color:#aaa">New — preferred date</div>
+    </div>
+    <div style="display:flex;align-items:center;color:#555;font-size:18px">→</div>
+    <div style="background:#1a3a1a;border-radius:6px;padding:10px;border:1px solid #2a5a2a">
+      <div style="font-size:18px">⏰</div>
+      <div style="color:#5a5;font-weight:bold;margin:4px 0">AWAITING_BOOKING_TIME</div>
+      <div style="color:#aaa">New — morning/afternoon/evening</div>
+    </div>
+  </div>
+  <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;text-align:center;font-size:11px;margin-top:6px">
+    <div style="background:#1a3a1a;border-radius:6px;padding:10px;border:1px solid #2a5a2a">
+      <div style="font-size:18px">✅</div>
+      <div style="color:#5a5;font-weight:bold;margin:4px 0">PENDING_BOOKING</div>
+      <div style="color:#aaa">New — waiting for owner to confirm</div>
+    </div>
+    <div style="display:flex;align-items:center;justify-content:center;color:#555;font-size:18px">→ owner confirms →</div>
+    <div style="background:#1a3a1a;border-radius:6px;padding:10px;border:1px solid #2a5a2a">
+      <div style="font-size:18px">🎉</div>
+      <div style="color:#5a5;font-weight:bold;margin:4px 0">BOOKING_CONFIRMED</div>
+      <div style="color:#aaa">Bot auto-sends confirmed time</div>
+    </div>
+  </div>
+  <p style="font-size:11px;color:#555;margin-top:8px">Green = new states. White = existing states reused.</p>
+</div>
+
+<div class="section">
+  <h3>4. Owner WhatsApp Commands</h3>
+  <div style="background:#111;border-radius:8px;padding:14px;font-size:12px;font-family:monospace;color:#7ec8e3;line-height:2">
+    <span style="color:#aaa">// Owner receives booking notification, replies:</span><br>
+    confirm abc123 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#aaa">→ use preferred date/time</span><br>
+    confirm abc123 tomorrow 3pm &nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#aaa">→ override with specific time</span><br>
+    reschedule abc123 sat morning &nbsp;&nbsp; <span style="color:#aaa">→ reassign + notify customer</span><br>
+    cancel abc123 &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; <span style="color:#aaa">→ cancel + notify customer</span>
+  </div>
+</div>
+
+<div class="section">
+  <h3>5. Dashboard Calendar</h3>
+  <div style="background:#111;border-radius:8px;padding:14px;font-size:13px;color:#aaa;line-height:1.8">
+    New page: <strong style="color:#7ec8e3">/dashboard/bookings</strong><br>
+    • Calendar view — bookings by date, colour-coded by status (PENDING=yellow, CONFIRMED=green)<br>
+    • Click booking → side panel with customer details + service list<br>
+    • Confirm / Reschedule / Cancel buttons → triggers bot reply to customer<br>
+    • Existing /dashboard/orders page unchanged (bakery orders stay there)
+  </div>
+</div>
+
+<div style="background:#1a1a2e;border:1px solid #e94560;border-radius:8px;padding:14px;margin-top:8px">
+  <p style="margin:0;font-size:13px;color:#aaa">Does this design look right so far? Anything to change before I write the spec?</p>
+</div>

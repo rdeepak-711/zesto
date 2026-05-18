@@ -1,0 +1,946 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bot Script — Zesto Dashboard</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=DM+Mono:ital,wght@0,300;0,400;0,500;1,300&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --bg: #f4f4f0;
+    --white: #ffffff;
+    --gray-50: #fafaf9;
+    --gray-100: #f0f0ec;
+    --gray-200: #e4e4de;
+    --gray-300: #d0d0c8;
+    --gray-400: #a8a89e;
+    --gray-500: #6e6e66;
+    --gray-600: #4a4a44;
+    --gray-700: #2e2e2a;
+    --gray-900: #1a1a16;
+    --orange: #f97316;
+    --orange-light: #fff3eb;
+    --orange-dark: #ea6c0a;
+    --wa-green: #25D366;
+    --wa-green-dark: #1da851;
+    --wa-light-green: #dcf8c6;
+    --wa-bg: #efeae2;
+    --wa-header: #075E54;
+    --wa-bubble-out: #dcf8c6;
+    --wa-bubble-in: #ffffff;
+    --wa-tick: #53bdeb;
+  }
+
+  body {
+    font-family: 'Outfit', sans-serif;
+    background: var(--bg);
+    color: var(--gray-900);
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  .topbar {
+    background: var(--white);
+    border-bottom: 1px solid var(--gray-200);
+    height: 56px;
+    display: flex;
+    align-items: center;
+    padding: 0 28px;
+    gap: 12px;
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .topbar-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: var(--gray-900);
+    letter-spacing: -0.01em;
+  }
+
+  .topbar-badge {
+    font-size: 11px;
+    color: var(--gray-500);
+    background: var(--gray-100);
+    padding: 2px 8px;
+    border-radius: 20px;
+    font-weight: 500;
+  }
+
+  .topbar-mode-pill {
+    margin-left: auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    background: #e8f5e9;
+    border: 1px solid #c8e6c9;
+    border-radius: 20px;
+    padding: 4px 10px 4px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: #2e7d32;
+  }
+
+  .topbar-mode-pill .dot {
+    width: 6px;
+    height: 6px;
+    background: #43a047;
+    border-radius: 50%;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+  }
+
+  /* ── Main layout ── */
+  .layout {
+    display: grid;
+    grid-template-columns: 1fr 360px;
+    gap: 0;
+    flex: 1;
+    min-height: 0;
+  }
+
+  /* ── Left: Script editor ── */
+  .editor-panel {
+    padding: 28px;
+    overflow-y: auto;
+    border-right: 1px solid var(--gray-200);
+  }
+
+  .section-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    margin-bottom: 16px;
+  }
+
+  .flow-steps {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .step-card {
+    background: var(--white);
+    border: 1px solid var(--gray-200);
+    border-radius: 12px;
+    overflow: hidden;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+
+  .step-card:hover {
+    border-color: var(--gray-300);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+  }
+
+  .step-card.active {
+    border-color: var(--orange);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.08);
+  }
+
+  .step-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 14px 16px;
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .step-num {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+
+  .step-card.active .step-num {
+    background: var(--orange);
+    color: white;
+  }
+
+  .step-info { flex: 1; min-width: 0; }
+
+  .step-title {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: 2px;
+  }
+
+  .step-trigger {
+    font-size: 11px;
+    color: var(--gray-400);
+    font-family: 'DM Mono', monospace;
+  }
+
+  .step-chevron {
+    color: var(--gray-300);
+    font-size: 12px;
+    transition: transform 0.2s;
+  }
+
+  .step-card.active .step-chevron { transform: rotate(180deg); }
+
+  .step-body {
+    display: none;
+    padding: 0 16px 16px;
+    border-top: 1px solid var(--gray-100);
+    padding-top: 14px;
+  }
+
+  .step-card.active .step-body { display: block; }
+
+  .msg-row {
+    margin-bottom: 12px;
+  }
+
+  .msg-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--gray-400);
+    margin-bottom: 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .msg-key-badge {
+    font-family: 'DM Mono', monospace;
+    background: var(--gray-100);
+    color: var(--gray-500);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-size: 9px;
+    text-transform: none;
+    letter-spacing: 0;
+  }
+
+  .msg-textarea {
+    width: 100%;
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--gray-700);
+    background: var(--gray-50);
+    border: 1px solid var(--gray-200);
+    border-radius: 8px;
+    padding: 10px 12px;
+    resize: vertical;
+    min-height: 70px;
+    outline: none;
+    transition: border-color 0.15s, background 0.15s;
+  }
+
+  .msg-textarea:focus {
+    border-color: var(--orange);
+    background: white;
+  }
+
+  .step-note {
+    font-size: 11px;
+    color: var(--gray-400);
+    background: var(--gray-50);
+    border-left: 2px solid var(--gray-200);
+    padding: 6px 10px;
+    border-radius: 0 6px 6px 0;
+    margin-top: 10px;
+    line-height: 1.5;
+  }
+
+  .save-btn {
+    margin-top: 10px;
+    background: var(--orange);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 7px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    font-family: 'Outfit', sans-serif;
+    cursor: pointer;
+    transition: background 0.15s, transform 0.1s;
+  }
+
+  .save-btn:hover { background: var(--orange-dark); }
+  .save-btn:active { transform: scale(0.97); }
+
+  /* ── Right: Phone preview ── */
+  .preview-panel {
+    background: var(--gray-50);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 24px 20px;
+    gap: 16px;
+    position: sticky;
+    top: 56px;
+    height: calc(100vh - 56px);
+    overflow-y: auto;
+  }
+
+  .preview-header {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .preview-label {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--gray-400);
+  }
+
+  .preview-toggle {
+    display: flex;
+    background: var(--gray-200);
+    border-radius: 8px;
+    padding: 2px;
+    gap: 2px;
+  }
+
+  .preview-toggle button {
+    font-size: 10px;
+    font-weight: 600;
+    font-family: 'Outfit', sans-serif;
+    border: none;
+    background: transparent;
+    color: var(--gray-500);
+    padding: 4px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s;
+  }
+
+  .preview-toggle button.active {
+    background: var(--white);
+    color: var(--gray-900);
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  }
+
+  /* ── Phone frame ── */
+  .phone {
+    width: 280px;
+    background: #1a1a1a;
+    border-radius: 44px;
+    padding: 10px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,0.08),
+      0 40px 80px rgba(0,0,0,0.35),
+      0 20px 40px rgba(0,0,0,0.2),
+      inset 0 0 0 1px rgba(255,255,255,0.04);
+    position: relative;
+  }
+
+  .phone-inner {
+    border-radius: 36px;
+    overflow: hidden;
+    background: var(--wa-bg);
+    height: 560px;
+    display: flex;
+    flex-direction: column;
+    position: relative;
+  }
+
+  .phone-notch {
+    position: absolute;
+    top: 0;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 100px;
+    height: 28px;
+    background: #1a1a1a;
+    border-radius: 0 0 20px 20px;
+    z-index: 20;
+  }
+
+  /* WhatsApp UI */
+  .wa-header {
+    background: var(--wa-header);
+    padding: 36px 12px 10px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .wa-back { color: rgba(255,255,255,0.8); font-size: 18px; }
+
+  .wa-avatar {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #f97316, #f59e0b);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    font-weight: 700;
+    color: white;
+    flex-shrink: 0;
+  }
+
+  .wa-contact { flex: 1; min-width: 0; }
+
+  .wa-name {
+    font-size: 13px;
+    font-weight: 600;
+    color: white;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .wa-status {
+    font-size: 10px;
+    color: rgba(255,255,255,0.65);
+    margin-top: 1px;
+  }
+
+  .wa-icons { color: rgba(255,255,255,0.8); font-size: 16px; display: flex; gap: 14px; }
+
+  /* Chat area */
+  .wa-chat {
+    flex: 1;
+    overflow-y: auto;
+    padding: 10px 10px 6px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    scrollbar-width: none;
+  }
+
+  .wa-chat::-webkit-scrollbar { display: none; }
+
+  .wa-date-sep {
+    text-align: center;
+    font-size: 10px;
+    color: var(--gray-600);
+    background: rgba(255,255,255,0.7);
+    border-radius: 6px;
+    padding: 3px 8px;
+    align-self: center;
+    margin: 4px 0;
+    font-family: 'DM Mono', monospace;
+  }
+
+  .bubble-row {
+    display: flex;
+    flex-direction: column;
+    opacity: 0;
+    transform: translateY(6px);
+    animation: bubbleIn 0.3s ease forwards;
+  }
+
+  .bubble-row.out { align-items: flex-end; }
+  .bubble-row.in { align-items: flex-start; }
+
+  @keyframes bubbleIn {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .bubble {
+    max-width: 82%;
+    padding: 7px 10px 5px;
+    border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10.5px;
+    line-height: 1.5;
+    position: relative;
+    word-break: break-word;
+  }
+
+  .bubble.out {
+    background: var(--wa-bubble-out);
+    border-bottom-right-radius: 3px;
+  }
+
+  .bubble.in {
+    background: var(--wa-bubble-in);
+    border-bottom-left-radius: 3px;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+  }
+
+  .bubble-time {
+    font-size: 9px;
+    color: var(--gray-400);
+    text-align: right;
+    margin-top: 2px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 3px;
+  }
+
+  .bubble.out .bubble-time { color: #7eb67e; }
+
+  .tick { color: var(--wa-tick); font-size: 11px; }
+
+  /* Bubble tail */
+  .bubble.out::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    right: -7px;
+    border: 7px solid transparent;
+    border-bottom-color: var(--wa-bubble-out);
+    border-right: 0;
+  }
+
+  .bubble.in::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: -7px;
+    border: 7px solid transparent;
+    border-bottom-color: var(--wa-bubble-in);
+    border-left: 0;
+  }
+
+  .bubble strong { font-weight: 700; }
+  .bubble em { font-style: italic; }
+
+  /* Typing indicator */
+  .typing-indicator {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 12px;
+    background: var(--wa-bubble-in);
+    border-radius: 10px;
+    border-bottom-left-radius: 3px;
+    width: fit-content;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.1);
+    opacity: 0;
+    animation: bubbleIn 0.3s ease 3.8s forwards;
+  }
+
+  .typing-dot {
+    width: 6px;
+    height: 6px;
+    background: var(--gray-400);
+    border-radius: 50%;
+    animation: typingBounce 1.2s infinite ease;
+  }
+
+  .typing-dot:nth-child(2) { animation-delay: 0.2s; }
+  .typing-dot:nth-child(3) { animation-delay: 0.4s; }
+
+  @keyframes typingBounce {
+    0%, 60%, 100% { transform: translateY(0); }
+    30% { transform: translateY(-4px); }
+  }
+
+  /* WA input bar */
+  .wa-input-bar {
+    background: var(--wa-bg);
+    padding: 6px 8px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .wa-input {
+    flex: 1;
+    background: white;
+    border-radius: 22px;
+    padding: 8px 14px;
+    font-size: 11px;
+    font-family: 'DM Mono', monospace;
+    color: var(--gray-700);
+    border: none;
+    outline: none;
+    display: flex;
+    align-items: center;
+    color: var(--gray-400);
+  }
+
+  .wa-mic {
+    width: 38px;
+    height: 38px;
+    background: var(--wa-green);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: white;
+    font-size: 16px;
+    flex-shrink: 0;
+  }
+
+  /* ── Scenario selector ── */
+  .scenario-tabs {
+    width: 100%;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+
+  .scenario-tab {
+    background: var(--white);
+    border: 1.5px solid var(--gray-200);
+    border-radius: 10px;
+    padding: 10px 14px;
+    cursor: pointer;
+    transition: all 0.15s;
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    text-align: left;
+    font-family: 'Outfit', sans-serif;
+  }
+
+  .scenario-tab:hover {
+    border-color: var(--orange);
+    background: var(--orange-light);
+  }
+
+  .scenario-tab.active {
+    border-color: var(--orange);
+    background: var(--orange-light);
+    box-shadow: 0 0 0 3px rgba(249,115,22,0.08);
+  }
+
+  .scenario-icon {
+    font-size: 18px;
+    flex-shrink: 0;
+    margin-top: 1px;
+  }
+
+  .scenario-info {}
+
+  .scenario-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--gray-700);
+    margin-bottom: 2px;
+  }
+
+  .scenario-desc {
+    font-size: 11px;
+    color: var(--gray-400);
+    line-height: 1.4;
+  }
+
+  /* Animation delays for conversation bubbles */
+  .bubble-row:nth-child(1) { animation-delay: 0.2s; }
+  .bubble-row:nth-child(2) { animation-delay: 1.0s; }
+  .bubble-row:nth-child(3) { animation-delay: 2.0s; }
+  .bubble-row:nth-child(4) { animation-delay: 3.2s; }
+  .bubble-row:nth-child(5) { animation-delay: 4.4s; }
+  .bubble-row:nth-child(6) { animation-delay: 5.5s; }
+
+  /* scenario panels */
+  .scenario-panel { display: none; flex-direction: column; gap: 4px; }
+  .scenario-panel.active { display: flex; }
+
+</style>
+</head>
+<body>
+
+<!-- Topbar -->
+<div class="topbar">
+  <span class="topbar-title">Bot Script</span>
+  <span class="topbar-badge">4 messages · 0 rules</span>
+  <div class="topbar-mode-pill">
+    <span class="dot"></span>
+    Enquiry Mode
+  </div>
+</div>
+
+<!-- Layout -->
+<div class="layout">
+
+  <!-- LEFT: Script editor -->
+  <div class="editor-panel">
+    <p class="section-label">Conversation Flow</p>
+    <div class="flow-steps">
+
+      <!-- Step 1 -->
+      <div class="step-card active" onclick="toggleStep(this)">
+        <div class="step-header">
+          <div class="step-num">1</div>
+          <div class="step-info">
+            <div class="step-title">Customer says hi</div>
+            <div class="step-trigger">hi / hello / any first message</div>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="msg-row">
+            <div class="msg-label">
+              Welcome greeting
+              <span class="msg-key-badge">welcome</span>
+            </div>
+            <textarea class="msg-textarea" rows="3">👋 Welcome to Phoenix Photo Studio!
+
+We print and frame your memories in premium quality. What are you looking for today?</textarea>
+          </div>
+          <button class="save-btn">Save</button>
+        </div>
+      </div>
+
+      <!-- Step 2 -->
+      <div class="step-card" onclick="toggleStep(this)">
+        <div class="step-header">
+          <div class="step-num">2</div>
+          <div class="step-info">
+            <div class="step-title">Customer asks about frames</div>
+            <div class="step-trigger">message contains "frame" or "photo frame"</div>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="msg-row">
+            <div class="msg-label">
+              Frame / pricing reply
+              <span class="msg-key-badge">enquiry_frame</span>
+            </div>
+            <textarea class="msg-textarea" rows="5">📐 *Our Photo Frame Sizes & Prices:*
+
+{pricing}
+
+🙏 The owner will reach out to you shortly!</textarea>
+            <div class="step-note">Use <code>{pricing}</code> — auto-filled with your full menu list.</div>
+          </div>
+          <div class="msg-row" style="margin-top:14px">
+            <div class="msg-label">
+              Keywords that trigger this
+              <span class="msg-key-badge">enquiry_keywords</span>
+            </div>
+            <textarea class="msg-textarea" rows="1" style="min-height:40px">frame,photo frame</textarea>
+            <div class="step-note">Comma-separated. Case-insensitive.</div>
+          </div>
+          <button class="save-btn">Save</button>
+        </div>
+      </div>
+
+      <!-- Step 3 -->
+      <div class="step-card" onclick="toggleStep(this)">
+        <div class="step-header">
+          <div class="step-num">3</div>
+          <div class="step-info">
+            <div class="step-title">Customer asks anything else</div>
+            <div class="step-trigger">any message — no keyword match</div>
+          </div>
+          <span class="step-chevron">▾</span>
+        </div>
+        <div class="step-body">
+          <div class="msg-row">
+            <div class="msg-label">
+              General enquiry reply
+              <span class="msg-key-badge">enquiry_other</span>
+            </div>
+            <textarea class="msg-textarea" rows="3">🙏 Thank you for reaching out to Phoenix Photo Studio!
+
+The owner has taken note of your message and will contact you shortly.</textarea>
+          </div>
+          <button class="save-btn">Save</button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- RIGHT: Phone preview -->
+  <div class="preview-panel">
+    <div class="preview-header">
+      <span class="preview-label">Live Preview</span>
+      <div class="preview-toggle">
+        <button class="active" onclick="switchTab(this, 'frame')">Frame inquiry</button>
+        <button onclick="switchTab(this, 'other')">Other inquiry</button>
+      </div>
+    </div>
+
+    <!-- Phone -->
+    <div class="phone">
+      <div class="phone-notch"></div>
+      <div class="phone-inner">
+
+        <!-- WA Header -->
+        <div class="wa-header">
+          <span class="wa-back">‹</span>
+          <div class="wa-avatar">P</div>
+          <div class="wa-contact">
+            <div class="wa-name">Phoenix Photo Studio</div>
+            <div class="wa-status">online</div>
+          </div>
+          <div class="wa-icons">
+            <span>📹</span>
+            <span>📞</span>
+          </div>
+        </div>
+
+        <!-- Chat — Frame scenario -->
+        <div class="wa-chat" id="chat-frame">
+          <div class="wa-date-sep">Today</div>
+
+          <div class="bubble-row out">
+            <div class="bubble out">
+              Hi
+              <div class="bubble-time">10:31 <span class="tick">✓✓</span></div>
+            </div>
+          </div>
+
+          <div class="bubble-row in">
+            <div class="bubble in">
+              👋 Welcome to Phoenix Photo Studio!<br><br>
+              We print and frame your memories in premium quality. What are you looking for today?
+              <div class="bubble-time">10:31</div>
+            </div>
+          </div>
+
+          <div class="bubble-row out">
+            <div class="bubble out">
+              Do you have photo frames? What are the prices?
+              <div class="bubble-time">10:32 <span class="tick">✓✓</span></div>
+            </div>
+          </div>
+
+          <div class="bubble-row in">
+            <div class="bubble in">
+              📐 <strong>Our Photo Frame Sizes & Prices:</strong><br><br>
+              • 4×6 inches — ₹200<br>
+              • 5×7 inches — ₹270<br>
+              • 6×8 inches — ₹300<br>
+              • 8×8 inches — ₹350<br>
+              • 8×10 inches — ₹400<br>
+              • 10×12 inches — ₹550<br>
+              • 12×15 inches — ₹750<br>
+              • 16×20 inches — ₹1,300<br>
+              • 20×24 inches — ₹2,000<br>
+              <em>...and more</em><br><br>
+              🙏 The owner will reach out to you shortly!
+              <div class="bubble-time">10:32</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Chat — Other scenario (hidden) -->
+        <div class="wa-chat" id="chat-other" style="display:none">
+          <div class="wa-date-sep">Today</div>
+
+          <div class="bubble-row out">
+            <div class="bubble out">
+              Hi
+              <div class="bubble-time">11:05 <span class="tick">✓✓</span></div>
+            </div>
+          </div>
+
+          <div class="bubble-row in">
+            <div class="bubble in">
+              👋 Welcome to Phoenix Photo Studio!<br><br>
+              We print and frame your memories in premium quality. What are you looking for today?
+              <div class="bubble-time">11:05</div>
+            </div>
+          </div>
+
+          <div class="bubble-row out">
+            <div class="bubble out">
+              Do you do passport size photo printing?
+              <div class="bubble-time">11:06 <span class="tick">✓✓</span></div>
+            </div>
+          </div>
+
+          <div class="bubble-row in">
+            <div class="bubble in">
+              🙏 Thank you for reaching out to Phoenix Photo Studio!<br><br>
+              The owner has taken note of your message and will contact you shortly.
+              <div class="bubble-time">11:06</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Input bar -->
+        <div class="wa-input-bar">
+          <div style="color:var(--gray-400);font-size:20px">☺</div>
+          <div class="wa-input">Type a message</div>
+          <div style="color:var(--gray-400);font-size:16px">📎</div>
+          <div class="wa-mic">🎤</div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- Scenario tabs -->
+    <div class="scenario-tabs">
+      <div class="scenario-tab active" onclick="switchScenario(this, 'frame')">
+        <span class="scenario-icon">🖼️</span>
+        <div class="scenario-info">
+          <div class="scenario-name">Frame inquiry</div>
+          <div class="scenario-desc">Customer asks about photo frames — bot shows full pricing</div>
+        </div>
+      </div>
+      <div class="scenario-tab" onclick="switchScenario(this, 'other')">
+        <span class="scenario-icon">💬</span>
+        <div class="scenario-info">
+          <div class="scenario-name">Other inquiry</div>
+          <div class="scenario-desc">Unrecognised message — owner gets notified, reply sent</div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<script>
+  function toggleStep(card) {
+    const wasActive = card.classList.contains('active')
+    document.querySelectorAll('.step-card').forEach(c => c.classList.remove('active'))
+    if (!wasActive) card.classList.add('active')
+  }
+
+  function switchScenario(tab, scenario) {
+    document.querySelectorAll('.scenario-tab').forEach(t => t.classList.remove('active'))
+    tab.classList.add('active')
+
+    // Switch chat panels
+    document.getElementById('chat-frame').style.display = scenario === 'frame' ? 'flex' : 'none'
+    document.getElementById('chat-other').style.display = scenario === 'other' ? 'flex' : 'none'
+
+    // Restart bubble animations
+    const chat = document.getElementById('chat-' + scenario)
+    chat.querySelectorAll('.bubble-row').forEach((b, i) => {
+      b.style.animation = 'none'
+      b.offsetHeight // reflow
+      b.style.opacity = '0'
+      b.style.animation = `bubbleIn 0.3s ease ${0.2 + i * 0.9}s forwards`
+    })
+
+    // Sync toggle buttons
+    const toggleBtns = document.querySelectorAll('.preview-toggle button')
+    toggleBtns.forEach(b => b.classList.remove('active'))
+    toggleBtns[scenario === 'frame' ? 0 : 1].classList.add('active')
+  }
+
+  function switchTab(btn, scenario) {
+    switchScenario(
+      document.querySelectorAll('.scenario-tab')[scenario === 'frame' ? 0 : 1],
+      scenario
+    )
+  }
+</script>
+</body>
+</html>

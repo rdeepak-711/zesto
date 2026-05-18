@@ -9,7 +9,7 @@ export function generateOtp(): string {
   return String(crypto.randomInt(100000, 999999))
 }
 
-export async function sendOtp(phone: string, tenantId: string): Promise<void> {
+export async function sendOtp(phone: string, tenantId: string, sendTo?: string): Promise<void> {
   const code = generateOtp()
   const codeHash = await bcrypt.hash(code, 10)
   const expiresAt = new Date(Date.now() + OTP_TTL_MS)
@@ -18,7 +18,7 @@ export async function sendOtp(phone: string, tenantId: string): Promise<void> {
     data: { phone, codeHash, expiresAt, tenantId },
   })
 
-  await sendWhatsApp(phone, `Your Zesto verification code: *${code}*\nExpires in 10 minutes.`)
+  await sendWhatsApp(sendTo ?? phone, `Your Zesto verification code: *${code}*\nExpires in 10 minutes.`)
 }
 
 export async function verifyOtp(phone: string, code: string): Promise<{ valid: boolean; tenantId?: string }> {
