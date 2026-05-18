@@ -1,11 +1,5 @@
 import { describe, it, expect } from 'vitest'
-
-// Pure function extracted from the webhook — we test it in isolation
-export function parseBookingCommand(body: string): { cmd: string; shortId: string; extra: string } | null {
-  const m = body.trim().match(/^(confirm|reschedule|cancel)\s+([A-Z0-9-]+)(?:\s+(.+))?$/i)
-  if (!m) return null
-  return { cmd: m[1].toLowerCase(), shortId: m[2].toUpperCase(), extra: (m[3] ?? '').trim() }
-}
+import { parseBookingCommand } from '@/lib/bot/bookingCommands'
 
 describe('parseBookingCommand', () => {
   it('parses confirm shortId', () => {
