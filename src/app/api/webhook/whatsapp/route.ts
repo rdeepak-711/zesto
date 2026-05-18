@@ -10,6 +10,19 @@ import type { Tenant } from '@prisma/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
 
+function generateShortId(businessName: string, sequentialNum: number): string {
+  const prefix = businessName
+    .split(/\s+/)
+    .map((w) => w[0]?.toUpperCase() ?? '')
+    .join('')
+    .slice(0, 3)
+  return `${prefix}-${String(sequentialNum).padStart(3, '0')}`
+}
+
+function fill(template: string, vars: Record<string, string>): string {
+  return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
+}
+
 function isWithinBusinessHours(tenant: { timezone: string; openDays: string; openTime: string; closeTime: string }): boolean {
   try {
     const localStr = new Date().toLocaleString('en-US', { timeZone: tenant.timezone })
@@ -719,6 +732,7 @@ Rules:
     deliveryDateEnabled: tenant.deliveryDateEnabled,
     deliveryDateLabel: tenant.deliveryDateLabel,
     businessName: tenant.businessName,
+    hasBooking: tenant.hasBooking,
   })
 
   if (output.placeOrder) {
@@ -820,8 +834,39 @@ Rules:
         })
       }
 
-      await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, tenant.whatsappNumber)
-      await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
+      if (tenant.hasBooking && output.context.customerName && output.context.bookingDate) {
+        const bookingCount = await db.booking.count({ where: { tenantId: tenant.id } })
+        const shortId = generateShortId(tenant.businessName, bookingCount + 1)
+        await db.booking.create({
+          data: {
+            tenantId: tenant.id,
+            orderId: order.id,
+            shortId,
+            customerPhone,
+            customerName: output.context.customerName,
+            customerAge: output.context.customerAge ?? null,
+            preferredDate: output.context.bookingDate,
+            preferredTime: output.context.bookingTime ?? '',
+          },
+        })
+        const serviceLines = output.cart.map((i) => `• ${i.name} — ₹${(itemTotal(i) / 100).toFixed(0)}`).join('\n')
+        const ownerMsg =
+          `📅 *New Booking Request* [${shortId}]\n` +
+          `👤 ${output.context.customerName}, age ${output.context.customerAge ?? '?'}\n` +
+          `📱 ${customerPhone}\n` +
+          `📆 Preferred: ${output.context.bookingDate}, ${output.context.bookingTime}\n\n` +
+          `Services:\n${serviceLines}\n` +
+          `Total: ₹${(totalAmount / 100).toFixed(0)}\n\n` +
+          `Reply:\n` +
+          `*confirm ${shortId}*\n` +
+          `*confirm ${shortId} 22may 2pm*\n` +
+          `*reschedule ${shortId} 23may morning*\n` +
+          `*cancel ${shortId}*`
+        await sendWhatsApp(tenant.ownerPhone, ownerMsg, tenant.whatsappNumber)
+      } else {
+        await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, tenant.whatsappNumber)
+        await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
+      }
     }
 
     await resetSession(customerPhone, tenant.id)
