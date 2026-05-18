@@ -82,6 +82,16 @@ describe('FSM booking flow', () => {
     expect(out.context.customerAge).toBe(24)
   })
 
+  it('AWAITING_AGE age 0 → stays AWAITING_AGE', () => {
+    const out = processMessage(base({ message: '0', state: 'AWAITING_AGE', cart, context: { customerName: 'Priya' } }))
+    expect(out.nextState).toBe('AWAITING_AGE')
+  })
+
+  it('AWAITING_AGE age 150 → stays AWAITING_AGE', () => {
+    const out = processMessage(base({ message: '150', state: 'AWAITING_AGE', cart, context: { customerName: 'Priya' } }))
+    expect(out.nextState).toBe('AWAITING_AGE')
+  })
+
   it('AWAITING_BOOKING_DATE too short → stays', () => {
     const out = processMessage(base({ message: 'S', state: 'AWAITING_BOOKING_DATE', cart, context: { customerName: 'Priya', customerAge: 24 } }))
     expect(out.nextState).toBe('AWAITING_BOOKING_DATE')
@@ -112,6 +122,24 @@ describe('FSM booking flow', () => {
     expect(out.context.bookingTime).toBe('afternoon')
   })
 
+  it('AWAITING_BOOKING_TIME "2" → AWAITING_CONFIRMATION, stores "afternoon"', () => {
+    const out = processMessage(base({ message: '2', state: 'AWAITING_BOOKING_TIME', cart, context: { customerName: 'Priya', customerAge: 24, bookingDate: 'saturday' } }))
+    expect(out.nextState).toBe('AWAITING_CONFIRMATION')
+    expect(out.context.bookingTime).toBe('afternoon')
+  })
+
+  it('AWAITING_BOOKING_TIME "3" → AWAITING_CONFIRMATION, stores "evening"', () => {
+    const out = processMessage(base({ message: '3', state: 'AWAITING_BOOKING_TIME', cart, context: { customerName: 'Priya', customerAge: 24, bookingDate: 'saturday' } }))
+    expect(out.nextState).toBe('AWAITING_CONFIRMATION')
+    expect(out.context.bookingTime).toBe('evening')
+  })
+
+  it('AWAITING_BOOKING_TIME "evening" → AWAITING_CONFIRMATION', () => {
+    const out = processMessage(base({ message: 'evening', state: 'AWAITING_BOOKING_TIME', cart, context: { customerName: 'Priya', customerAge: 24, bookingDate: 'saturday' } }))
+    expect(out.nextState).toBe('AWAITING_CONFIRMATION')
+    expect(out.context.bookingTime).toBe('evening')
+  })
+
   it('AWAITING_CONFIRMATION yes + hasBooking → PENDING_BOOKING + placeOrder=true', () => {
     const ctx = { customerName: 'Priya', customerAge: 24, bookingDate: 'saturday', bookingTime: 'morning' }
     const out = processMessage(base({ message: 'yes', state: 'AWAITING_CONFIRMATION', cart, context: ctx }))
@@ -119,9 +147,10 @@ describe('FSM booking flow', () => {
     expect(out.placeOrder).toBe(true)
   })
 
-  it('PENDING_BOOKING any message → stays PENDING_BOOKING', () => {
+  it('PENDING_BOOKING any message → stays PENDING_BOOKING with reply', () => {
     const out = processMessage(base({ message: 'hello', state: 'PENDING_BOOKING', cart: [] }))
     expect(out.nextState).toBe('PENDING_BOOKING')
     expect(out.placeOrder).toBe(false)
+    expect(out.reply.length).toBeGreaterThan(0)
   })
 })
