@@ -299,7 +299,7 @@ model Booking {
   shortId       String        @unique @db.VarChar(20)
   customerPhone String        @db.VarChar(20)
   customerName  String        @db.VarChar(100)
-  customerAge   Int
+  customerAge   Int?
   preferredDate String        @db.VarChar(50)
   preferredTime String        @db.VarChar(50)
   confirmedDate String?       @db.VarChar(50)
