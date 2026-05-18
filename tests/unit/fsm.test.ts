@@ -151,10 +151,10 @@ describe('FSM AWAITING_QUANTITY', () => {
 describe('FSM AWAITING_CONFIRMATION', () => {
   const cart = [{ menuItemId: 'item-choc', name: 'Chocolate Cake', price: 80000, quantity: 1, fields: [] }]
 
-  it('moves to AWAITING_PAYMENT_METHOD on confirm', () => {
+  it('places order on confirm', () => {
     const out = processMessage(makeInput({ message: 'confirm', state: 'AWAITING_CONFIRMATION', cart }))
-    expect(out.placeOrder).toBe(false)
-    expect(out.nextState).toBe('AWAITING_PAYMENT_METHOD')
+    expect(out.placeOrder).toBe(true)
+    expect(out.nextState).toBe('ORDER_PENDING')
   })
 
   it('cancels on no', () => {
