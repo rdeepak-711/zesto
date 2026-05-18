@@ -14,7 +14,7 @@ type TreeNode = {
 
 const ROOT_NODES: TreeNode[] = [
   { label: 'Customer sends a message', isRoot: true },
-  { label: 'Hi! Welcome to [Studio Name] 📸\nWhat are you looking for today?', isBot: true },
+  { label: 'Hey! 👋 What can we help you with today?\n(Shown on greeting. Direct-intent messages skip this.)', isBot: true },
   { label: 'Customer types their request (free text)', isUser: true },
   { label: 'Keyword router detects intent', isBranch: true },
 ]
