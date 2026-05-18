@@ -189,7 +189,15 @@ async function saveEnquiryAndNotify(params: {
   const customItem = customCat
     ? await db.menuItem.findFirst({ where: { tenantId, categoryId: customCat.id } })
     : null
-  if (!customItem) return
+  if (!customItem) {
+    const notes = buildSummary(product, answers)
+    const ownerMsg =
+      `📩 *New Enquiry*\n📱 ${customerPhone}\n\n` +
+      notes +
+      `\n\nReply to confirm details & pricing.`
+    await sendWhatsApp(ownerPhone, ownerMsg, whatsappNumber)
+    return
+  }
 
   const prev = await db.order.findFirst({
     where: { tenantId, customerPhone },

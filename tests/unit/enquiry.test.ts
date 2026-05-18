@@ -2,8 +2,26 @@ import { describe, it, expect, vi, beforeEach } from 'vitest'
 vi.mock('image-size', () => ({
   imageSize: vi.fn(),
 }))
+
+vi.mock('@/lib/db', () => ({
+  db: {
+    menuCategory: { findFirst: vi.fn() },
+    menuItem: { findFirst: vi.fn() },
+    order: {
+      findFirst: vi.fn(),
+      create: vi.fn(),
+    },
+  },
+}))
+
+vi.mock('@/lib/twilio', () => ({
+  sendWhatsApp: vi.fn(),
+}))
+
 import { imageSize } from 'image-size'
 import { detectProduct, handleEnquiryState, type EnquiryHandlerParams } from '@/lib/bot/enquiry'
+import { db } from '@/lib/db'
+import { sendWhatsApp } from '@/lib/twilio'
 
 const BASE_PARAMS: EnquiryHandlerParams = {
   tenantId: 'tenant-1',
@@ -185,5 +203,72 @@ describe('PF_AWAITING_PHOTO — photo suggestion constraints', () => {
       expect(MENU_SIZE_LABELS).toContain(suggested)
       expect(suggested).not.toBe('8×8 inches')
     }
+  })
+})
+
+describe('saveEnquiryAndNotify — no custom menu item', () => {
+  beforeEach(() => {
+    vi.clearAllMocks()
+  })
+
+  it('sends owner WhatsApp notification even when no custom category exists', async () => {
+    vi.mocked(db.menuCategory.findFirst).mockResolvedValue(null)
+    vi.mocked(db.order.findFirst).mockResolvedValue(null)
+
+    await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'PF_AWAITING_NAME',
+      body: 'Priya',
+      context: {
+        enquiryProduct: 'Photo Frame — MDF frames (table / wall / shadow)',
+        enquiryAnswers: {
+          frameType: 'MDF frames (table / wall / shadow)',
+          size: '8×10',
+          occasion: 'Gift',
+          quantity: '2',
+        },
+      },
+    })
+
+    expect(sendWhatsApp).toHaveBeenCalledWith(
+      BASE_PARAMS.ownerPhone,
+      expect.stringContaining('Enquiry'),
+      BASE_PARAMS.whatsappNumber,
+    )
+  })
+
+  it('creates order AND notifies when custom item exists', async () => {
+    vi.mocked(db.menuCategory.findFirst).mockResolvedValue({
+      id: 'cat-custom', tenantId: 'tenant-1', name: 'Custom', sortOrder: 0,
+      active: true, isCustom: true,
+    } as any)
+    vi.mocked(db.menuItem.findFirst).mockResolvedValue({
+      id: 'item-custom', tenantId: 'tenant-1', name: 'Custom Order',
+      price: 0, categoryId: 'cat-custom', available: true,
+    } as any)
+    vi.mocked(db.order.findFirst).mockResolvedValue(null)
+    vi.mocked(db.order.create).mockResolvedValue({ id: 'order-abc-12345678' } as any)
+
+    await handleEnquiryState({
+      ...BASE_PARAMS,
+      state: 'PF_AWAITING_NAME',
+      body: 'Priya',
+      context: {
+        enquiryProduct: 'Photo Frame — MDF frames',
+        enquiryAnswers: {
+          frameType: 'MDF frames',
+          size: '8×10',
+          occasion: 'Gift',
+          quantity: '2',
+        },
+      },
+    })
+
+    expect(db.order.create).toHaveBeenCalled()
+    expect(sendWhatsApp).toHaveBeenCalledWith(
+      BASE_PARAMS.ownerPhone,
+      expect.stringContaining('Enquiry'),
+      BASE_PARAMS.whatsappNumber,
+    )
   })
 })
