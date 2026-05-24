@@ -50,6 +50,7 @@ async function seedTenant() {
       hasBooking: false,
       hasEnquiry: false,
       hasDelivery: true,
+      deliveryZones: 'Nungambakkam, T.Nagar, Adyar, Velachery, Anna Nagar',
       deliveryDateEnabled: true,
       deliveryDateLabel: 'When do you need your order? (e.g. *Friday 3pm*, *this Saturday morning*)',
       minOrderAmount: 50000,

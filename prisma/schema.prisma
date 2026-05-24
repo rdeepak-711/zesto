@@ -44,6 +44,7 @@ model Tenant {
   hasBooking          Boolean  @default(false)
   hasEnquiry          Boolean  @default(false)
   hasDelivery         Boolean  @default(true)
+  deliveryZones  String?  @db.Text
   createdAt           DateTime @default(now())
 
   @@map("tenants")
@@ -145,6 +146,8 @@ model Order {
   paymentLinkUrl String?       @db.VarChar(500)
   notes          String?       @db.Text
   paymentMethod  String        @default("ONLINE") @db.VarChar(10)
+  advancePaid    Boolean  @default(false)
+  advanceAmount  Int      @default(0)
   bakerNotifiedAt DateTime?
   createdAt      DateTime      @default(now())
   updatedAt      DateTime      @updatedAt
