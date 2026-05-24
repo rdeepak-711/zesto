@@ -819,6 +819,7 @@ Rules:
     deliveryDateLabel: tenant.deliveryDateLabel,
     businessName: tenant.businessName,
     hasBooking: tenant.hasBooking,
+    deliveryZones: tenant.deliveryZones ?? undefined,
   })
 
   // ── Slot availability enrichment ─────────────────────────────────────────

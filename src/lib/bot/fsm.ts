@@ -239,6 +239,27 @@ export function processMessage(input: BotInput): BotOutput {
     return { reply: messages['booking_pending_reply'] ?? "Your booking is being reviewed. We'll confirm your exact time soon! 🌸", nextState: 'PENDING_BOOKING', cart, context, placeOrder: false }
   }
 
+  // Delivery date state — intercept before global commands so short inputs re-prompt with zones
+  if (state === 'AWAITING_DELIVERY_DATE') {
+    const dateInput = message.trim()
+    if (dateInput.length < 3) {
+      const zonesLine = deliveryZones
+        ? `\n_(We deliver to: ${deliveryZones})_`
+        : ''
+      const datePrompt = deliveryDateLabel
+        ?? (messages['delivery_date_prompt'] ?? '📅 When and where would you like your order?')
+      return {
+        reply: `${datePrompt}${zonesLine}`,
+        nextState: 'AWAITING_DELIVERY_DATE',
+        cart,
+        context,
+        placeOrder: false,
+      }
+    }
+    const newContext = { ...context, deliveryNote: dateInput }
+    return { reply: formatOrderSummary(cart, newContext, messages), nextState: 'AWAITING_CONFIRMATION', cart, context: newContext, placeOrder: false }
+  }
+
   // Global commands
   if (m === 'hi' || m === 'hello' || m === 'start') {
     return { reply: msg(messages, 'welcome', { businessName, categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart: [], context: {}, placeOrder: false }
@@ -472,10 +493,21 @@ export function processMessage(input: BotInput): BotOutput {
     }
 
     case 'AWAITING_DELIVERY_DATE': {
+      // Handled before global commands above; this branch is kept for exhaustiveness
       const dateInput = message.trim()
-      if (dateInput.length < 2) {
-        const datePrompt = deliveryDateLabel ?? (messages['delivery_date_prompt'] ?? "📅 When would you like your order?")
-        return { reply: datePrompt, nextState: 'AWAITING_DELIVERY_DATE', cart, context, placeOrder: false }
+      if (dateInput.length < 3) {
+        const zonesLine = deliveryZones
+          ? `\n_(We deliver to: ${deliveryZones})_`
+          : ''
+        const datePrompt = deliveryDateLabel
+          ?? (messages['delivery_date_prompt'] ?? '📅 When and where would you like your order?')
+        return {
+          reply: `${datePrompt}${zonesLine}`,
+          nextState: 'AWAITING_DELIVERY_DATE',
+          cart,
+          context,
+          placeOrder: false,
+        }
       }
       const newContext = { ...context, deliveryNote: dateInput }
       return { reply: formatOrderSummary(cart, newContext, messages), nextState: 'AWAITING_CONFIRMATION', cart, context: newContext, placeOrder: false }

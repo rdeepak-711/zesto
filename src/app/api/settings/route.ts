@@ -23,6 +23,7 @@ export async function PATCH(req: NextRequest) {
     'timezone', 'openDays', 'openTime', 'closeTime',
     'websiteUrl', 'instagramUrl', 'facebookUrl',
     'razorpayKeyId', 'razorpayKeySecret',
+    'deliveryZones',
   ]
   const update: Record<string, string | number | boolean> = {}
   for (const key of stringFields) {
