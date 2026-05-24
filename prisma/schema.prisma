@@ -241,7 +241,7 @@ model BotSession {
   tenantId      String?  @db.VarChar(36)
   customerPhone String   @db.VarChar(20)
   state         String   @default("IDLE") @db.VarChar(50)
-  cartJson      String   @default("[]") @db.VarChar(4000)
+  cartJson      String   @db.Text
   contextJson   String   @db.Text
   lastActive    DateTime @default(now()) @updatedAt
 

@@ -34,6 +34,7 @@ function isWithinBusinessHours(tenant: { timezone: string; openDays: string; ope
     const cur = local.getHours() * 60 + local.getMinutes()
     const [oh, om] = tenant.openTime.split(':').map(Number)
     const [ch, cm] = tenant.closeTime.split(':').map(Number)
+    if (isNaN(oh) || isNaN(om) || isNaN(ch) || isNaN(cm)) return true // malformed time config — fail open
     return cur >= oh * 60 + om && cur < ch * 60 + cm
   } catch {
     return true // fail open so bugs don't block all messages
@@ -464,7 +465,7 @@ export async function POST(req: NextRequest) {
   const params: Record<string, string> = {}
   formData.forEach((value, key) => { params[key] = value.toString() })
   const authToken = process.env.TWILIO_AUTH_TOKEN!
-  const bypassSig = process.env.TEST_WEBHOOK_BYPASS?.trim() === 'true'
+  const bypassSig = process.env.NODE_ENV !== 'production' && process.env.TEST_WEBHOOK_BYPASS?.trim() === 'true'
   if (!bypassSig && !validateRequest(authToken, signature, webhookUrl, params)) {
     return new NextResponse('Forbidden', { status: 403 })
   }
@@ -476,6 +477,7 @@ export async function POST(req: NextRequest) {
   const toNumber = rawTo.replace('whatsapp:', '')
   const numMedia = parseInt(formData.get('NumMedia')?.toString() ?? '0', 10)
   const mediaUrl = formData.get('MediaUrl0')?.toString()
+  const messageSid = formData.get('MessageSid')?.toString()
 
   if (!customerPhone) return new NextResponse('Bad Request', { status: 400 })
 
@@ -488,9 +490,19 @@ export async function POST(req: NextRequest) {
     return new NextResponse('', { status: 200 })
   }
 
+  // Deduplicate Twilio retries — return 200 immediately if we've seen this MessageSid
+  if (messageSid) {
+    const duplicate = await db.message.findUnique({ where: { twilioSid: messageSid } })
+    if (duplicate) return new NextResponse('', { status: 200 })
+  }
+
   // Owner reply — route to owner handler
   if (customerPhone === tenant.ownerPhone) {
-    await handleOwnerReply(body, customerPhone, tenant)
+    try {
+      await handleOwnerReply(body, customerPhone, tenant)
+    } catch (err) {
+      console.error('[webhook] handleOwnerReply failed:', err)
+    }
     return new NextResponse('', { status: 200 })
   }
 
@@ -505,7 +517,7 @@ export async function POST(req: NextRequest) {
       .replace('{openDays}', openDayLabels)
       .replace('{openTime}', tenant.openTime)
       .replace('{closeTime}', tenant.closeTime)
-    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN' } })
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN', twilioSid: messageSid ?? null } })
     await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
     await sendWhatsApp(customerPhone, reply, tenant.whatsappNumber)
     return new NextResponse('', { status: 200 })
@@ -538,7 +550,16 @@ export async function POST(req: NextRequest) {
   const messages = Object.fromEntries(botMessageRows.map((r) => [r.key, r.value]))
   const m = body.trim().toLowerCase()
 
-  await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN' } })
+  // Ignore media-only messages (sticker, voice note, location) with no text body
+  if (!body && numMedia > 0) {
+    const reply = messages['media_unsupported'] ?? "We received your media! Please describe your order in text so we can help you 😊"
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: '[media]', direction: 'IN', twilioSid: messageSid ?? null } })
+    await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+    try { await sendWhatsApp(customerPhone, reply, tenant.whatsappNumber) } catch { /* WA unavailable */ }
+    return new NextResponse('', { status: 200 })
+  }
+
+  await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN', twilioSid: messageSid ?? null } })
 
   // ── Enquiry mode ─────────────────────────────────────────────────────────
   // Customer leads — bot reacts to what they say, no forced welcome.
@@ -774,13 +795,14 @@ Rules:
         let allMatched = true
 
         for (const ai of parsed.items) {
+          if (typeof ai.name !== 'string' || !ai.name) { allMatched = false; break }
           const item = menuItems.find(i =>
             i.name.toLowerCase().includes(ai.name.toLowerCase()) ||
             ai.name.toLowerCase().includes(i.name.toLowerCase())
           )
           if (!item) { allMatched = false; break }
-
-          cart.push({ menuItemId: item.id, name: item.name, price: item.price, quantity: ai.quantity ?? 1, fields: [] })
+          const qty = Math.max(1, Math.min(99, parseInt(String(ai.quantity ?? 1), 10) || 1))
+          cart.push({ menuItemId: item.id, name: item.name, price: item.price, quantity: qty, fields: [] })
         }
 
         if (allMatched && cart.length > 0) {
@@ -858,6 +880,15 @@ Rules:
   if (output.placeOrder) {
     const ctx = output.context
     const isCustom = !!(ctx.customOccasion || ctx.customDate || ctx.customServings || ctx.customDietary || ctx.customBudget || ctx.customDescription)
+
+    // Guard: placeOrder fired with empty cart and no custom brief — reset and inform customer
+    if (!isCustom && output.cart.length === 0) {
+      const reply = messages['cart_empty'] ?? "Something went wrong — your cart is empty. Type *hi* to start again."
+      await resetSession(customerPhone, tenant.id)
+      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: reply, direction: 'OUT' } })
+      try { await sendWhatsApp(customerPhone, reply, tenant.whatsappNumber) } catch { /* WA unavailable */ }
+      return new NextResponse('', { status: 200 })
+    }
     const customDescription = isCustom
       ? [
           ctx.customOccasion ? `Occasion: ${ctx.customOccasion}` : '',
@@ -968,16 +999,21 @@ Rules:
       })
 
       if (output.context.appliedCode) {
+        const appliedCodeRecord = discountCodes.find(c => c.code === output.context.appliedCode)
+        // Atomic increment: only update if maxUses not yet reached (or unlimited)
         await db.discountCode.updateMany({
-          where: { tenantId: tenant.id, code: output.context.appliedCode },
+          where: {
+            tenantId: tenant.id,
+            code: output.context.appliedCode,
+            ...(appliedCodeRecord?.maxUses ? { usedCount: { lt: appliedCodeRecord.maxUses } } : {}),
+          },
           data: { usedCount: { increment: 1 } },
         })
       }
 
       if (tenant.hasBooking && output.context.customerName && output.context.bookingDate) {
         try {
-          const bookingCount = await db.booking.count({ where: { tenantId: tenant.id } })
-          const shortId = generateShortId(tenant.businessName, bookingCount + 1)
+          const shortId = generateShortId(tenant.businessName, Date.now() % 100000)
           await db.booking.create({
             data: {
               tenantId: tenant.id,
