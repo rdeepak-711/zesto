@@ -520,6 +520,7 @@ export async function POST(req: NextRequest) {
     }),
     db.menuItem.findMany({
       where: { tenantId: tenant.id, available: true },
+      orderBy: { sortOrder: 'asc' },
     }),
     db.botMessage.findMany({ where: { tenantId: tenant.id } }),
     db.botRule.findMany({ where: { tenantId: tenant.id, active: true }, orderBy: { sortOrder: 'asc' } }),
