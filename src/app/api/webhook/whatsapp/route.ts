@@ -769,7 +769,7 @@ export async function POST(req: NextRequest) {
         signal: AbortSignal.timeout(8000),
         headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'openai/gpt-oss-20b:free',
+          model: 'liquid/lfm-2.5-1.2b-instruct:free',
           messages: [
             {
               role: 'system',
@@ -912,7 +912,7 @@ Rules:
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'openai/gpt-oss-20b:free',
+            model: 'liquid/lfm-2.5-1.2b-instruct:free',
             messages: [
               {
                 role: 'system',
