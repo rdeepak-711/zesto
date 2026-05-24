@@ -766,10 +766,10 @@ export async function POST(req: NextRequest) {
 
       const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
-        signal: AbortSignal.timeout(8000),
+        signal: AbortSignal.timeout(10000),
         headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'liquid/lfm-2.5-1.2b-instruct:free',
+          model: 'openai/gpt-oss-20b:free',
           messages: [
             {
               role: 'system',
@@ -777,7 +777,7 @@ export async function POST(req: NextRequest) {
 Return ONLY valid JSON in this exact shape:
 {"items": [{"name": "exact menu item name", "quantity": 1}], "deliveryNote": "optional delivery time", "confidence": 0.0-1.0}
 Rules:
-- Only include items that clearly match something on the menu (fuzzy ok, but must be reasonable)
+- ONLY include items the customer explicitly mentioned. Do NOT add any extra items.
 - If the message is not an order (greeting, question, gibberish), return {"items": [], "confidence": 0}
 - confidence > 0.7 means you are sure about the order`,
             },
@@ -912,7 +912,7 @@ Rules:
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'liquid/lfm-2.5-1.2b-instruct:free',
+            model: 'openai/gpt-oss-20b:free',
             messages: [
               {
                 role: 'system',
