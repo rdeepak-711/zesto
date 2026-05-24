@@ -887,7 +887,7 @@ Rules:
           },
         },
       })
-      const customBrief: CustomBrief | undefined = output.context.customOccasion ? {
+      const customBrief: CustomBrief | undefined = (output.context.customOccasion || output.context.customDate || output.context.customServings || output.context.customDietary || output.context.customBudget) ? {
         occasion: output.context.customOccasion,
         date: output.context.customDate,
         servings: output.context.customServings,
