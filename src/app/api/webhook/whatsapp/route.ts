@@ -856,8 +856,18 @@ Rules:
   }
 
   if (output.placeOrder) {
-    const isCustom = !!output.context.customDescription
-    const customDescription = output.context.customDescription
+    const ctx = output.context
+    const isCustom = !!(ctx.customOccasion || ctx.customDate || ctx.customServings || ctx.customDietary || ctx.customBudget || ctx.customDescription)
+    const customDescription = ctx.customDescription
+      ?? (isCustom
+        ? [
+            ctx.customOccasion ? `Occasion: ${ctx.customOccasion}` : '',
+            ctx.customDate ? `Date: ${ctx.customDate}` : '',
+            ctx.customServings ? `Servings: ${ctx.customServings}` : '',
+            ctx.customDietary ? `Dietary: ${ctx.customDietary}` : '',
+            ctx.customBudget ? `Budget: ${ctx.customBudget}` : '',
+          ].filter(Boolean).join(', ')
+        : undefined)
 
     let finalDescription = customDescription
     if (isCustom && process.env.OPENROUTER_API_KEY && customDescription) {
@@ -896,14 +906,15 @@ Rules:
     let order
     const paymentMethod = output.context.paymentMethod ?? 'ONLINE'
 
-    if (isCustom && finalDescription) {
+    if (isCustom) {
+      const noteText = finalDescription ?? 'Custom Order'
       order = await db.order.create({
         data: {
           tenantId: tenant.id,
           customerPhone,
           customerName: prevOrder?.customerName ?? 'WhatsApp Customer',
           totalAmount: 0,
-          notes: finalDescription,
+          notes: noteText,
           paymentMethod,
           deliveryNote: output.context.deliveryNote,
           items: {
@@ -911,17 +922,17 @@ Rules:
           },
         },
       })
-      const customBrief: CustomBrief | undefined = (output.context.customOccasion || output.context.customDate || output.context.customServings || output.context.customDietary || output.context.customBudget) ? {
-        occasion: output.context.customOccasion,
-        date: output.context.customDate,
-        servings: output.context.customServings,
-        dietary: output.context.customDietary,
-        budget: output.context.customBudget,
-        notes: output.context.customDescription,
+      const customBrief: CustomBrief | undefined = (ctx.customOccasion || ctx.customDate || ctx.customServings || ctx.customDietary || ctx.customBudget) ? {
+        occasion: ctx.customOccasion,
+        date: ctx.customDate,
+        servings: ctx.customServings,
+        dietary: ctx.customDietary,
+        budget: ctx.customBudget,
+        notes: ctx.customDescription,
       } : undefined
       await notifyBaker(
         order.id,
-        [{ menuItemId: 'custom', name: `Custom Order: ${finalDescription}`, price: 0, quantity: 1, fields: [] }],
+        [{ menuItemId: 'custom', name: `Custom Order: ${noteText}`, price: 0, quantity: 1, fields: [] }],
         0,
         customerPhone,
         tenant.ownerPhone,

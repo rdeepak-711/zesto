@@ -591,7 +591,7 @@ export function processMessage(input: BotInput): BotOutput {
       const dietaryMap: Record<string, string> = {
         '1': 'Eggless', '2': 'Nut-free', '3': 'Vegan', '4': 'None',
       }
-      const dietary = dietaryMap[m] ?? message.trim()
+      const dietary = m === 'skip' ? undefined : (dietaryMap[m] ?? message.trim())
       return {
         reply: "💰 *What's your rough budget?*\n\n1️⃣ Below ₹1,000\n2️⃣ ₹1,000–2,000\n3️⃣ ₹2,000–5,000\n4️⃣ Above ₹5,000",
         nextState: 'AWAITING_CUSTOM_BUDGET',
@@ -605,7 +605,7 @@ export function processMessage(input: BotInput): BotOutput {
       const budgetMap: Record<string, string> = {
         '1': 'Below ₹1,000', '2': '₹1,000–2,000', '3': '₹2,000–5,000', '4': 'Above ₹5,000',
       }
-      const budget = budgetMap[m] ?? message.trim()
+      const budget = m === 'skip' ? undefined : (budgetMap[m] ?? message.trim())
       return {
         reply: "✏️ *Any specific design ideas or other details?*\n\n(Describe it, send a reference, or type *skip*)",
         nextState: 'AWAITING_CUSTOM_DESCRIPTION',
