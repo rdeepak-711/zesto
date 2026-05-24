@@ -45,6 +45,12 @@ export type BotContext = {
   customerAge?: number
   bookingDate?: string
   bookingTime?: string
+  // custom order brief fields
+  customOccasion?: string
+  customDate?: string
+  customServings?: string
+  customDietary?: string
+  customBudget?: string
 }
 
 export type BotSession = {

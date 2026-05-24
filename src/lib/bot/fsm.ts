@@ -11,6 +11,11 @@ export type BotState =
   | 'AWAITING_CONFIRMATION'
   | 'AWAITING_CUSTOM_DESCRIPTION'
   | 'AWAITING_CUSTOM_CONFIRM'
+  | 'AWAITING_CUSTOM_OCCASION'
+  | 'AWAITING_CUSTOM_DATE'
+  | 'AWAITING_CUSTOM_SERVINGS'
+  | 'AWAITING_CUSTOM_DIETARY'
+  | 'AWAITING_CUSTOM_BUDGET'
   | 'AWAITING_PAYMENT_METHOD'
   | 'ORDER_PENDING'
   | 'AWAITING_NAME'
@@ -80,6 +85,7 @@ export type BotInput = {
   deliveryDateLabel?: string
   businessName?: string
   hasBooking?: boolean
+  deliveryZones?: string
 }
 
 export type BotOutput = {
@@ -214,6 +220,7 @@ export function processMessage(input: BotInput): BotOutput {
     deliveryDateLabel,
     businessName = '',
     hasBooking = false,
+    deliveryZones,
   } = input
   const m = message.trim().toLowerCase()
   const sorted = [...categories].sort((a, b) => a.sortOrder - b.sortOrder)
@@ -265,7 +272,13 @@ export function processMessage(input: BotInput): BotOutput {
         return { reply: msg(messages, 'invalid_category', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart, context, placeOrder: false }
       }
       if (matched.isCustom) {
-        return { reply: messages['custom_prompt'] ?? "✏️ Tell us exactly what you'd like.", nextState: 'AWAITING_CUSTOM_DESCRIPTION', cart, context: { ...context, selectedCategoryId: matched.id }, placeOrder: false }
+        return {
+          reply: "🎂 Let's design your custom cake!\n\n*What's the occasion?*\n\n1️⃣ Birthday\n2️⃣ Wedding\n3️⃣ Anniversary\n4️⃣ Corporate / Office\n5️⃣ Other\n\nReply with a number or type it out.",
+          nextState: 'AWAITING_CUSTOM_OCCASION',
+          cart,
+          context: { ...context, selectedCategoryId: matched.id },
+          placeOrder: false,
+        }
       }
       const items = menuItems.filter((i) => i.categoryId === matched!.id)
       return { reply: formatItems(items, matched.name, messages), nextState: 'AWAITING_ITEM', cart, context: { ...context, selectedCategoryId: matched.id }, placeOrder: false }
@@ -515,28 +528,128 @@ export function processMessage(input: BotInput): BotOutput {
       return { reply: messages['payment_method_prompt'] ?? `💳 *How would you like to pay?*\n\n1️⃣ Pay online\n2️⃣ Cash on delivery\n\nReply with *1* or *2*`, nextState: 'AWAITING_PAYMENT_METHOD', cart, context, placeOrder: false }
     }
 
-    case 'AWAITING_CUSTOM_DESCRIPTION': {
-      const desc = message.trim()
-      if (desc.length < 10) {
-        return { reply: messages['custom_too_short'] ?? 'Please give a bit more detail!', nextState: 'AWAITING_CUSTOM_DESCRIPTION', cart, context, placeOrder: false }
+    case 'AWAITING_CUSTOM_OCCASION': {
+      const occasionMap: Record<string, string> = {
+        '1': 'Birthday', '2': 'Wedding', '3': 'Anniversary', '4': 'Corporate / Office', '5': 'Other',
+      }
+      const occasion = occasionMap[m] ?? message.trim()
+      if (!occasion || occasion.length < 2) {
+        return {
+          reply: "Please choose an occasion:\n\n1️⃣ Birthday\n2️⃣ Wedding\n3️⃣ Anniversary\n4️⃣ Corporate / Office\n5️⃣ Other",
+          nextState: 'AWAITING_CUSTOM_OCCASION', cart, context, placeOrder: false,
+        }
       }
       return {
-        reply: msg(messages, 'custom_confirm', { description: desc }),
+        reply: `📅 *When do you need it?*\n\n(e.g. _this Saturday_, _14 June_, _next Friday afternoon_)`,
+        nextState: 'AWAITING_CUSTOM_DATE',
+        cart,
+        context: { ...context, customOccasion: occasion },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_DATE': {
+      const date = message.trim()
+      if (date.length < 2) {
+        return {
+          reply: "📅 When do you need the cake? (e.g. *this Saturday*, *14 June*)",
+          nextState: 'AWAITING_CUSTOM_DATE', cart, context, placeOrder: false,
+        }
+      }
+      return {
+        reply: "👥 *How many people will be eating?*\n\n(Helps us suggest the right size, e.g. _20 people_, _family of 6_)",
+        nextState: 'AWAITING_CUSTOM_SERVINGS',
+        cart,
+        context: { ...context, customDate: date },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_SERVINGS': {
+      const servings = message.trim()
+      return {
+        reply: "🥚 *Any dietary requirements?*\n\n1️⃣ Eggless\n2️⃣ Nut-free\n3️⃣ Vegan\n4️⃣ None\n\nReply with a number or describe.",
+        nextState: 'AWAITING_CUSTOM_DIETARY',
+        cart,
+        context: { ...context, customServings: servings },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_DIETARY': {
+      const dietaryMap: Record<string, string> = {
+        '1': 'Eggless', '2': 'Nut-free', '3': 'Vegan', '4': 'None',
+      }
+      const dietary = dietaryMap[m] ?? message.trim()
+      return {
+        reply: "💰 *What's your rough budget?*\n\n1️⃣ Below ₹1,000\n2️⃣ ₹1,000–2,000\n3️⃣ ₹2,000–5,000\n4️⃣ Above ₹5,000",
+        nextState: 'AWAITING_CUSTOM_BUDGET',
+        cart,
+        context: { ...context, customDietary: dietary },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_BUDGET': {
+      const budgetMap: Record<string, string> = {
+        '1': 'Below ₹1,000', '2': '₹1,000–2,000', '3': '₹2,000–5,000', '4': 'Above ₹5,000',
+      }
+      const budget = budgetMap[m] ?? message.trim()
+      return {
+        reply: "✏️ *Any specific design ideas or other details?*\n\n(Describe it, send a reference, or type *skip*)",
+        nextState: 'AWAITING_CUSTOM_DESCRIPTION',
+        cart,
+        context: { ...context, customBudget: budget },
+        placeOrder: false,
+      }
+    }
+
+    case 'AWAITING_CUSTOM_DESCRIPTION': {
+      const desc = m === 'skip' ? '' : message.trim()
+      if (desc.length > 0 && desc.length < 5) {
+        return { reply: 'Please give a bit more detail, or type *skip* to continue.', nextState: 'AWAITING_CUSTOM_DESCRIPTION', cart, context, placeOrder: false }
+      }
+      const newContext = { ...context, customDescription: desc || undefined }
+
+      const lines = [
+        `🎂 *Your Custom Cake Request*\n`,
+        context.customOccasion ? `• *Occasion:* ${context.customOccasion}` : '',
+        context.customDate ? `• *Date needed:* ${context.customDate}` : '',
+        context.customServings ? `• *Serving:* ${context.customServings}` : '',
+        context.customDietary ? `• *Dietary:* ${context.customDietary}` : '',
+        context.customBudget ? `• *Budget:* ${context.customBudget}` : '',
+        desc ? `• *Notes:* ${desc}` : '',
+      ].filter(Boolean).join('\n')
+
+      return {
+        reply: `${lines}\n\nLooks good? Reply *yes* to send to the baker, or *edit* to start over.`,
         nextState: 'AWAITING_CUSTOM_CONFIRM',
         cart,
-        context: { ...context, customDescription: desc },
+        context: newContext,
         placeOrder: false,
       }
     }
 
     case 'AWAITING_CUSTOM_CONFIRM': {
       if (m === 'yes' || m === 'confirm') {
-        return { reply: messages['order_placed'] ?? '🎉 Order placed! We\'ll be in touch shortly.', nextState: 'ORDER_PENDING', cart, context: { ...context, paymentMethod: 'ONLINE' }, placeOrder: true }
+        return {
+          reply: messages['custom_order_placed'] ?? '🎉 Sent! Our baker will review your request and get back to you with a quote and availability.',
+          nextState: 'ORDER_PENDING',
+          cart,
+          context: { ...context, paymentMethod: 'ONLINE' },
+          placeOrder: true,
+        }
       }
       if (m === 'edit') {
-        return { reply: messages['custom_prompt'] ?? "✏️ Retype your request.", nextState: 'AWAITING_CUSTOM_DESCRIPTION', cart, context: { ...context, customDescription: undefined }, placeOrder: false }
+        return {
+          reply: "🎂 Let's start over. *What's the occasion?*\n\n1️⃣ Birthday\n2️⃣ Wedding\n3️⃣ Anniversary\n4️⃣ Corporate / Office\n5️⃣ Other",
+          nextState: 'AWAITING_CUSTOM_OCCASION',
+          cart,
+          context: { ...context, customOccasion: undefined, customDate: undefined, customServings: undefined, customDietary: undefined, customBudget: undefined, customDescription: undefined },
+          placeOrder: false,
+        }
       }
-      return { reply: messages['custom_await_confirm'] ?? 'Reply *yes* to send, or *edit* to retype.', nextState: 'AWAITING_CUSTOM_CONFIRM', cart, context, placeOrder: false }
+      return { reply: 'Reply *yes* to send to the baker, or *edit* to start over.', nextState: 'AWAITING_CUSTOM_CONFIRM', cart, context, placeOrder: false }
     }
 
     case 'ORDER_PENDING': {
