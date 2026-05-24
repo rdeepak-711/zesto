@@ -928,16 +928,18 @@ Rules:
         budget: ctx.customBudget,
         notes: ctx.customDescription,
       } : undefined
-      await notifyBaker(
-        order.id,
-        [{ menuItemId: 'custom', name: `Custom Order: ${noteText}`, price: 0, quantity: 1, fields: [] }],
-        0,
-        customerPhone,
-        tenant.ownerPhone,
-        tenant.whatsappNumber,
-        customBrief,
-      )
-      await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
+      try {
+        await notifyBaker(
+          order.id,
+          [{ menuItemId: 'custom', name: `Custom Order: ${noteText}`, price: 0, quantity: 1, fields: [] }],
+          0,
+          customerPhone,
+          tenant.ownerPhone,
+          tenant.whatsappNumber,
+          customBrief,
+        )
+        await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
+      } catch { /* baker notification failed — order still created */ }
     } else if (output.cart.length > 0) {
       const cartTotal = output.cart.reduce((sum, i) => sum + itemTotal(i), 0)
       const discountAmount = output.context.appliedDiscount ?? 0
