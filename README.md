@@ -1,97 +1,146 @@
-# Zesto — WhatsApp Ordering for Any Business
+# Zesto — WhatsApp Bot + Owner Dashboard for Any Business
 
-A multi-tenant WhatsApp ordering bot + owner dashboard. Customers order via WhatsApp chat; business owners manage orders, menu, and settings from a web dashboard. One deployment serves multiple businesses — each with isolated data, their own WhatsApp number, and their own owner login.
+A multi-tenant SaaS platform that turns WhatsApp into a fully automated ordering counter, booking desk, and enquiry line — backed by a clean owner dashboard.
 
-**Live:** https://zesto-rose.vercel.app
+**Live:** https://zesto-rose.vercel.app  
+**Pages:** [Home](https://zesto-rose.vercel.app) · [The Idea](https://zesto-rose.vercel.app/idea) · [Dashboard Tour](https://zesto-rose.vercel.app/product)
+
+---
+
+## What It Does
+
+Customers send "hi" to a business's WhatsApp number. The bot greets them, shows menus or services, takes an order or books an appointment, collects payment details, and confirms — all inside WhatsApp, no app download required.
+
+Business owners manage everything from a web dashboard: accept orders, confirm bookings, track revenue, update menus, and send broadcast messages.
+
+### Supported Business Types
+
+| Business | Flow |
+|----------|------|
+| Bakery / Restaurant / Café / Grocery | Cart ordering: categories → items → category fields → quantity → delivery date → discount → confirm |
+| Salon / Makeup Studio / Service | Booking: service → confirm → name → age → date → time slot → confirmed |
+| Photo Studio / Custom Shop | Enquiry: keyword routing → product-specific questionnaire → owner notified |
+
+---
 
 ## Features
 
-- **Multi-tenant SaaS** — one Zesto deployment hosts many businesses; each tenant has their own WA number, menu, orders, and owner login
-- **Self-service onboarding** — new tenants run a 3-step setup wizard (store settings → menu builder → bot script) before the dashboard unlocks
-- **WhatsApp bot** — conversational ordering flow: categories → items → category fields → quantity → delivery date → discount code → confirm
-- **Category fields** — per-category customisation questions (multiple choice or short text) asked at order time; answers stored as JSON on each order item
-- **Order tracking** — customers type `track` to get live status; `cancel order` to request cancellation
-- **Owner WhatsApp management** — type `orders` for a paginated list; pick by number to see detail and take action (accept/reject/pay/complete) — no dashboard needed
-- **Owner dashboard** — orders, conversations, customers CRM, menu manager, analytics, bot script, settings
+- **Multi-tenant SaaS** — one deployment, many businesses; each tenant has isolated data, their own WhatsApp number, and their own owner login
+- **WhatsApp ordering bot** — full FSM: categories → items → category fields → quantity → delivery date → discount → confirm
+- **Booking flow** — appointment booking FSM with calendar dashboard (Confirm / Reschedule / Cancel + Notify)
+- **Enquiry mode** — AI-assisted product routing for photo studios and custom shops
+- **Category fields** — per-category customisation questions (multiple choice or short text) stored as JSON per order item
+- **Owner dashboard** — orders, bookings calendar, conversations, customers CRM, menu manager, analytics, bot script editor, settings
+- **Analytics** — 30-day revenue chart, top items, peak hours, repeat rate, avg order value
+- **Broadcast messages** — send WhatsApp to all/segmented past customers in one click
 - **Discount codes** — percent or flat-off, with expiry and usage limits; validated at checkout
-- **Broadcast messages** — send a WhatsApp message to all past customers in one click
 - **Razorpay payments** — owner sends payment link via WhatsApp; customer pays in browser
-- **Post-order feedback** — bot asks for a 1–5 star rating after order is completed
-- **OTP login** — owner authenticates via WhatsApp OTP (no password)
-- **Delivery date toggle** — enable/disable delivery date collection per tenant, with customisable prompt label
-- **Business hours** — open/close time, open days, and timezone stored per tenant
-- **Custom orders** — customer describes a bespoke item; AI (OpenRouter) reformats for the owner
-- **Business types** — bakery, restaurant, grocery, café, pharmacy, pet store, florist, or general retail
+- **Post-order feedback** — bot asks for 1–5 star rating after order is completed
+- **Order tracking** — customers type `track` for live status; `cancel order` to request cancellation
+- **Owner WhatsApp management** — type `orders` for paginated list; manage (accept/reject/pay/complete) entirely from WhatsApp
+- **OTP login** — owner authenticates via WhatsApp OTP; no password
+- **AI info-bot** — any customer question triggers Gemini 2.0 Flash Lite with full menu knowledge and conversation history, in any FSM state
+- **Custom orders** — customer describes a bespoke item; AI reformats for the owner
+- **Capability flags** — `hasCart`, `hasBooking`, `hasEnquiry`, `hasDelivery` on each tenant; FSM branches on flags, not business type — new business types require zero code changes
+- **Self-service onboarding** — 3-step setup wizard (store settings → menu builder → bot script)
+
+---
 
 ## Tech Stack
 
-- **Framework**: Next.js 16 App Router (Turbopack)
-- **Database**: TiDB Cloud (MySQL) via Prisma 7 + `@tidbcloud/prisma-adapter`
-- **Multi-tenancy**: shared DB, `tenantId` on every table, webhook routing by WA `To` number
-- **WhatsApp / SMS**: Twilio
-- **Payments**: Razorpay Standard Checkout
-- **Auth**: JWT + httpOnly cookie — payload includes `{ phone, tenantId, role: 'owner' }`
-- **AI**: OpenRouter (Gemini 2.0 Flash Lite) for custom order formatting
-- **Hosting**: Vercel
+| Layer | Technology |
+|-------|-----------|
+| Framework | Next.js 16 App Router (Turbopack) |
+| Database | TiDB Cloud (MySQL-compatible) via Prisma 7 + `@tidbcloud/prisma-adapter` |
+| WhatsApp / SMS | Twilio |
+| Payments | Razorpay Standard Checkout |
+| Auth | JWT + httpOnly cookie — `{ phone, tenantId, role: 'owner' }` |
+| AI | OpenRouter (Gemini 2.0 Flash Lite) — info-bot + custom order reformatting |
+| Hosting | Vercel |
+
+---
 
 ## Local Setup
 
-1. **Clone and install**
-   ```bash
-   git clone https://github.com/rdeepak-711/zesto.git
-   cd zesto
-   npm install
-   ```
+### 1. Clone and install
 
-2. **Environment variables** — copy `.env.example` to `.env.local` and fill in:
-   ```
-   DATABASE_URL=mysql://...@gateway.tidbcloud.com:4000/zesto
-   JWT_SECRET=<64-char random hex>
-   TWILIO_ACCOUNT_SID=ACxxxxxxxx
-   TWILIO_AUTH_TOKEN=xxxxxxxx
-   TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
-   NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
-   RAZORPAY_KEY_ID=rzp_test_...
-   RAZORPAY_KEY_SECRET=...
-   NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_...
-   OPENROUTER_API_KEY=sk-or-...    # optional — falls back to raw description
-   ```
-
-3. **Push schema + seed**
-   ```bash
-   npx prisma db push
-   npx tsx prisma/seed.ts                # seeds bot message keys + sample menu
-   npx tsx prisma/seed-demo-tenants.ts  # creates 5 demo tenants (dev only)
-   npx tsx prisma/backfill-tenant.ts    # creates first production tenant from env vars
-   ```
-
-4. **Run dev server**
-   ```bash
-   npm run dev
-   ```
-
-5. **Expose webhook** (for WhatsApp bot testing)
-   ```bash
-   npx localtunnel --port 3000
-   # Set Twilio sandbox webhook to: https://<your-tunnel>/api/webhook/whatsapp
-   ```
-
-## Onboarding a New Tenant
-
-New tenants are created by inserting a row in the `tenants` table (via `backfill-tenant.ts` or directly). On first dashboard login, the tenant has no menu categories — the dashboard redirects them to `/dashboard/setup` where a 3-step wizard collects:
-
-1. **Store settings** — business name, type, address, hours, timezone, social links
-2. **Menu builder** — categories, items (name + price), and per-category customisation fields
-3. **Bot script** — review/edit auto-seeded bot messages → "Go live" bootstraps 37 default messages and redirects to the dashboard
-
-In development, use the dev login bypass to skip OTP:
-```
-http://localhost:3000/api/dev/login?phone=+91XXXXXXXXXX
+```bash
+git clone https://github.com/rdeepak-711/zesto.git
+cd zesto
+npm install
 ```
 
-## Dashboard Login
+### 2. Environment variables
 
-Navigate to `/login` and enter the owner's phone number. OTP is sent via WhatsApp. Each tenant's owner phone is stored in the `tenants` table — the login resolves the tenant automatically from the phone number.
+Copy `.env.example` to `.env.local` and fill in:
+
+```env
+DATABASE_URL=mysql://...@gateway.tidbcloud.com:4000/zesto
+JWT_SECRET=<64-char random hex>
+TWILIO_ACCOUNT_SID=ACxxxxxxxx
+TWILIO_AUTH_TOKEN=xxxxxxxx
+TWILIO_WHATSAPP_NUMBER=whatsapp:+14155238886
+NEXT_PUBLIC_APP_URL=https://your-app.vercel.app
+RAZORPAY_KEY_ID=rzp_test_...
+RAZORPAY_KEY_SECRET=...
+NEXT_PUBLIC_RAZORPAY_KEY_ID=rzp_test_...
+OPENROUTER_API_KEY=sk-or-...    # optional — falls back to raw description
+```
+
+### 3. Push schema and seed
+
+```bash
+npx prisma db push
+npx tsx prisma/seed.ts                # bot message keys + sample menu
+npx tsx prisma/seed-demo-tenants.ts  # 5 demo tenants (dev only)
+npx tsx prisma/backfill-tenant.ts    # creates first production tenant
+```
+
+### 4. Run dev server
+
+```bash
+npm run dev
+```
+
+### 5. Expose webhook (for WhatsApp bot testing)
+
+```bash
+npx localtunnel --port 3000
+# Set Twilio sandbox webhook to: https://<your-tunnel>/api/webhook/whatsapp
+```
+
+---
+
+## Demo Tenants
+
+Three demo tenants are live on https://zesto-rose.vercel.app:
+
+| Business | Type | Login number |
+|----------|------|-------------|
+| Sweet Crumbs Bakery | Bakery (ordering) | `+919800000001` |
+| Phoenix Photo Studio | Photo studio (enquiry) | `+917010044626` |
+| Glow Zone | Salon (ordering + booking) | `+919952050806` |
+
+Use OTP bypass code `000000` if `TEST_OTP_BYPASS=true` is set.
+
+---
+
+## Dashboard Sections
+
+| Section | Description |
+|---------|-------------|
+| **Orders** | Real-time order list with Accept / Reject / Payment / Complete actions |
+| **Bookings** | Monthly calendar view; click to confirm, reschedule, or cancel with notification |
+| **Conversations** | Per-customer WhatsApp message thread |
+| **Customers** | CRM: phone, order count, lifetime spend |
+| **Menu** | Category + item tree with images, prices, availability toggle, and category fields |
+| **Bot Script** | FSM flow diagram; inline message editing; live animated phone preview (tenant-aware) |
+| **Discounts** | Create and manage discount codes |
+| **Broadcast** | Compose and send WhatsApp to customer segments |
+| **Analytics** | Revenue chart, top items, peak hours, repeat rate |
+| **Settings** | Business info, delivery date toggle, Razorpay credentials |
+
+---
 
 ## WhatsApp Commands
 
@@ -99,88 +148,87 @@ Navigate to `/login` and enter the owner's phone number. OTP is sent via WhatsAp
 
 | Command | Action |
 |---------|--------|
-| `hi` | Start a new order |
-| `menu` | Browse categories |
-| `track` / `order status` | Check active order status |
+| `hi` / `hello` | Start a new session |
+| `menu` | Browse categories from any state |
+| `track` | Check active order status |
 | `cancel order` | Cancel or request cancellation |
-| `back` | Return to category list |
-| `confirm` | Proceed to checkout |
 | `1–5` (after order complete) | Submit star rating |
 
 ### Owner
 
 | Command | Action |
 |---------|--------|
-| `orders` | Show paginated list of active orders (5 at a time) |
-| `1`–`5` (in list) | Select an order to manage |
+| `orders` | Paginated list of active orders |
+| `1`–`5` | Select an order to manage |
 | `next` / `prev` | Navigate order pages |
-| `back` (in detail) | Return to order list |
-| `1`–`3` (in detail) | Execute action for the selected order |
+| `back` | Return to list |
+| `1`–`3` (in detail) | Execute action (accept/reject/pay/complete) |
 
-**Detail actions by status:**
+---
 
-| Order Status | 1 | 2 | 3 |
-|---|---|---|---|
-| Pending | Accept | Reject | — |
-| Accepted | Request Payment | Reject | Mark Completed |
-| Paid | Mark Completed | — | — |
+## Running Tests
+
+```bash
+npm test              # Vitest unit tests (79 passing)
+npm run test:e2e      # Playwright E2E (requires dev server)
+```
+
+---
 
 ## Project Structure
 
 ```
 src/
   app/
+    page.tsx                   # Landing home
+    idea/page.tsx              # The idea page
+    product/page.tsx           # Dashboard feature tour
     api/
-      auth/              # send-otp, verify-otp, logout
-      bootstrap/         # POST — seeds 37 bot messages + Custom Order category for a tenant
-      broadcast/         # send WhatsApp to tenant's customers
-      contact/           # landing page contact form
-      dev/login/         # GET — dev-only OTP bypass (blocked in production)
-      discounts/[id]/    # discount code CRUD (auth + tenantId scoped)
-      menu/              # categories + items + category fields CRUD (tenantId scoped)
-      onboard/           # POST — saves Step 1 + Step 2 wizard data
-      payment/           # Razorpay create-order + verify
-      settings/          # tenant config update
-      analytics/         # revenue + order analytics (tenantId scoped)
-      webhook/whatsapp/  # Twilio webhook — routes by To number → tenant → bot FSM
+      auth/                    # send-otp, verify-otp, logout
+      bootstrap/               # Seeds 37 bot messages for a tenant
+      broadcast/               # Send WhatsApp to tenant's customers
+      contact/                 # Landing page contact form
+      dev/login/               # Dev-only OTP bypass (blocked in production)
+      discounts/[id]/          # Discount code CRUD (tenantId scoped)
+      menu/                    # Categories + items + category fields CRUD
+      onboard/                 # Saves onboarding wizard data
+      payment/                 # Razorpay create-order + verify
+      settings/                # Tenant config update
+      analytics/               # Revenue + order analytics
+      webhook/whatsapp/        # Twilio webhook → tenant lookup → bot FSM
     dashboard/
-      layout.tsx         # auth check, tenant lookup, sidebar with businessName
-      page.tsx           # redirects to /dashboard/setup if no menu categories exist
-      setup/             # 3-step onboarding wizard (store → menu → bot script)
-      orders/            # order list + detail with progress tracker
-      conversations/     # per-customer message inbox
-      customers/         # CRM with spend summary
-      broadcast/         # compose + send broadcast
-      discounts/         # manage discount codes
-      menu/              # menu manager with category fields builder
-      analytics/         # revenue + order charts
-      settings/          # tenant config, delivery date, bot messages
-      bot/               # bot script editor
-    pay/[orderId]/       # customer-facing Razorpay payment page (shows businessName)
-    login/               # OTP login
+      layout.tsx               # Auth check, tenant lookup, sidebar
+      page.tsx                 # Redirects to /dashboard/setup if no menu
+      setup/                   # 3-step onboarding wizard
+      orders/                  # Order list + detail with status tracker
+      bookings/                # Booking calendar + confirm/reschedule/cancel panel
+      conversations/           # Per-customer message inbox
+      customers/               # CRM with spend summary
+      broadcast/               # Compose + send broadcast
+      discounts/               # Manage discount codes
+      menu/                    # Menu manager with category fields builder
+      analytics/               # Revenue + order charts
+      settings/                # Tenant config, Razorpay, delivery date
+      bot/                     # Bot script editor + FSM flow + live phone preview
+    pay/[orderId]/             # Customer-facing Razorpay payment page
+    login/                     # OTP login
   lib/
-    bot/fsm.ts           # WhatsApp bot state machine (pure function)
-    botSession.ts        # session persistence — compound key (phone, tenantId)
-    auth.ts              # JWT helpers — AuthPayload: { phone, tenantId, role }
-    otp.ts               # OTP generation + verification (stores tenantId)
-    twilio.ts            # Twilio client + sendWhatsApp
-    razorpay.ts          # Razorpay client + signature verification
-    bakerNotify.ts       # new order WhatsApp notification
-  proxy.ts               # auth guard for /dashboard routes
+    bot/fsm.ts                 # WhatsApp bot FSM (pure function)
+    bot/bookingCommands.ts     # parseBookingCommand utility
+    botSession.ts              # Session persistence (phone + tenantId)
+    auth.ts                    # JWT helpers
+    otp.ts                     # OTP generation + verification
+    twilio.ts                  # Twilio client + sendWhatsApp
+    razorpay.ts                # Razorpay client + signature verification
+    bakerNotify.ts             # New order WhatsApp notification
+  proxy.ts                     # Auth guard for /dashboard routes
 prisma/
   schema.prisma
-  seed.ts                # bot message keys + sample menu for dev
-  seed-demo-tenants.ts   # 5 demo tenants for local testing
-  backfill-tenant.ts     # creates first tenant from TWILIO_WHATSAPP_NUMBER env var
-  bootstrapTenant.ts     # seeds 37 default bot messages per tenant
-  migrate-variants.ts    # one-time migration: item variants → category fields
+  seed.ts                      # Bot message keys + sample menu (dev)
+  seed-demo-tenants.ts         # 5 demo tenants for local testing
+  backfill-tenant.ts           # Creates first tenant from env vars
+  bootstrapTenant.ts           # Seeds 37 default bot messages per tenant
+  seed-glowzone.ts             # Glow Zone demo salon tenant (hasBooking=true)
 tests/
-  unit/fsm.test.ts       # Vitest unit tests for bot FSM
-```
-
-## Running Tests
-
-```bash
-npm test              # Vitest unit tests
-npm run test:e2e      # Playwright E2E (requires dev server)
+  unit/fsm.test.ts             # Vitest unit tests for bot FSM (79 passing)
 ```

@@ -91,7 +91,10 @@ export default function SettingsForm({ tenant }: { tenant: Tenant }) {
             <option value="bakery">Bakery</option>
             <option value="restaurant">Restaurant</option>
             <option value="cafe">Cafe</option>
+            <option value="cloud kitchen">Cloud Kitchen</option>
             <option value="grocery">Grocery</option>
+            <option value="salon">Salon / Makeup Studio</option>
+            <option value="photo studio">Photo Studio</option>
             <option value="fashion">Fashion</option>
             <option value="electronics">Electronics</option>
             <option value="pharmacy">Pharmacy</option>

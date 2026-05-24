@@ -298,7 +298,7 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
     const mLower = m.toLowerCase()
     if (mLower === 'menu' || mLower === 'start over') {
       return {
-        reply: `Hey! 👋 What can we help you with today?`,
+        reply: p.messages['welcome'] || `Hey! 👋 What can we help you with today?`,
         nextState: 'ENQUIRY_LISTENING',
         nextContext: {},
         done: false,
@@ -310,8 +310,9 @@ export async function handleEnquiryState(p: EnquiryHandlerParams): Promise<Enqui
   // Called when state === 'IDLE' and enquiry_mode is on.
   if (state === 'IDLE') {
     if (isGreeting(m)) {
+      const greeting = p.messages['welcome'] || `Hey! 👋 What can we help you with today?`
       return {
-        reply: `Hey! 👋 What can we help you with today?`,
+        reply: greeting,
         nextState: 'ENQUIRY_LISTENING',
         nextContext: { ...context, enquiryAnswers: {} },
         done: false,

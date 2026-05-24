@@ -32,6 +32,13 @@ export async function verifyOtp(phone: string, code: string): Promise<{ valid: b
     return { valid: false }
   }
 
+  // Bypass for testing — only active when TEST_OTP_BYPASS=true
+  if (process.env.TEST_OTP_BYPASS?.trim() === 'true' && code === '000000') {
+    const session = sessions[0]
+    await db.otpSession.update({ where: { id: session.id }, data: { used: true } })
+    return { valid: true, tenantId: session.tenantId ?? undefined }
+  }
+
   for (const session of sessions) {
     const match = await bcrypt.compare(code, session.codeHash)
     if (match) {

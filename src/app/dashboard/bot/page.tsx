@@ -4,6 +4,7 @@ import { redirect } from 'next/navigation'
 import BotGraph from './BotGraph'
 import BotEnquiryEditor from './BotEnquiryEditor'
 import BotPhonePreview from './BotPhonePreview'
+import BotOrderPreview from './BotOrderPreview'
 
 export default async function BotPage() {
   const auth = await getAuthFromCookies()
@@ -21,6 +22,7 @@ export default async function BotPage() {
 
   const tenant = await db.tenant.findUnique({ where: { id: auth.tenantId } })
   const businessName = tenant?.businessName ?? 'Your Business'
+  const hasBooking = tenant?.hasBooking ?? false
 
   const msgMap = Object.fromEntries(messages.map(m => [m.key, m.value]))
   const isEnquiryMode = Boolean(msgMap['enquiry_mode'])
@@ -63,11 +65,19 @@ export default async function BotPage() {
 
         {/* Right: phone preview (sticky) */}
         <div className="w-[340px] flex-shrink-0 border-l border-gray-200 bg-gray-50 overflow-y-auto p-6">
-          <BotPhonePreview
-            messages={msgMap}
-            businessName={businessName}
-            pricingSample={pricingSample}
-          />
+          {isEnquiryMode ? (
+            <BotPhonePreview
+              messages={msgMap}
+              businessName={businessName}
+              pricingSample={pricingSample}
+            />
+          ) : (
+            <BotOrderPreview
+              businessName={businessName}
+              hasBooking={hasBooking}
+              welcomeMsg={msgMap['welcome'] ?? ''}
+            />
+          )}
         </div>
       </div>
     </div>

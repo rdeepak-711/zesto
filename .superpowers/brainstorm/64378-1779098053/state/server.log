@@ -1,6 +1,0 @@
-{"type":"server-started","port":55212,"host":"127.0.0.1","url_host":"localhost","url":"http://localhost:55212","screen_dir":"/Users/deepak/Documents/instagram/zesto/.superpowers/brainstorm/64378-1779098053/content","state_dir":"/Users/deepak/Documents/instagram/zesto/.superpowers/brainstorm/64378-1779098053/state"}
-{"type":"screen-added","file":"/Users/deepak/Documents/instagram/zesto/.superpowers/brainstorm/64378-1779098053/content/scope-decomposition.html"}
-{"source":"user-event","type":"click","text":"AB\n    \n      A + B together\n      Design service catalog and booking in one spec since they're tightly coupled. More upfront design work but one cohesive system.","choice":"ab","id":null,"timestamp":1779098109253}
-{"type":"screen-added","file":"/Users/deepak/Documents/instagram/zesto/.superpowers/brainstorm/64378-1779098053/content/fsm-approaches.html"}
-{"type":"screen-added","file":"/Users/deepak/Documents/instagram/zesto/.superpowers/brainstorm/64378-1779098053/content/design-overview.html"}
-{"type":"server-stopped","reason":"idle timeout"}
