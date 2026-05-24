@@ -218,10 +218,16 @@ async function sendOwnerDetail(ownerPhone: string, tenant: Tenant, orderId: stri
 
   const actions: string[] = []
   if (order.status === 'PENDING') {
-    actions.push('1️⃣ Accept')
-    actions.push('2️⃣ Reject')
+    actions.push('1️⃣ Accept (full payment on delivery)')
+    actions.push('2️⃣ Accept (request 50% advance)')
+    actions.push('3️⃣ Reject')
   } else if (order.status === 'ACCEPTED') {
-    actions.push('1️⃣ Request Payment')
+    const advanceLine = (order as any).advancePaid
+      ? `\n✅ 50% advance received`
+      : (order as any).advanceAmount > 0
+        ? `\n⏳ Awaiting 50% advance (₹${((order as any).advanceAmount / 100).toFixed(0)})`
+        : ''
+    actions.push(`1️⃣ Request Full Payment${advanceLine}`)
     actions.push('2️⃣ Reject')
     actions.push('3️⃣ Mark Completed')
   } else if (order.status === 'PAID') {
@@ -361,20 +367,36 @@ async function handleOwnerReply(body: string, ownerPhone: string, tenant: Tenant
 
     if (order.status === 'PENDING') {
       if (action === 1) {
+        // Accept — no payment link yet
         await db.order.update({ where: { id: order.id }, data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() } })
         const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
-        if (order.totalAmount > 0) {
-          const payUrl = `${APP_URL}/pay/${order.id}`
-          await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\n💳 Please complete your payment:\n${payUrl}\n\nWe'll start preparing once payment is received.`, tenant.whatsappNumber)
-          await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Payment link sent to customer.`, tenant.whatsappNumber)
-        } else {
-          await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\nWe'll notify you when it's ready.`, tenant.whatsappNumber)
-          await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Customer notified.`, tenant.whatsappNumber)
-        }
+        await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\nWe'll be in touch with next steps shortly.`, tenant.whatsappNumber)
+        await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. Customer notified.`, tenant.whatsappNumber)
         await sendOwnerList(ownerPhone, tenant, page)
         return
       }
       if (action === 2) {
+        // Accept + request 50% advance
+        await db.order.update({ where: { id: order.id }, data: { status: 'ACCEPTED', bakerNotifiedAt: new Date() } })
+        if (order.totalAmount > 0) {
+          const halfAmount = Math.round(order.totalAmount / 2)
+          const payUrl = `${APP_URL}/pay/${order.id}`
+          const deliveryLine = order.deliveryNote ? `\n📅 *Delivery:* ${order.deliveryNote}` : ''
+          await sendWhatsApp(
+            order.customerPhone,
+            `🎉 Your order *#${shortId}* has been accepted!${deliveryLine}\n\n💳 *50% advance required to confirm:*\nAmount: ₹${(halfAmount / 100).toFixed(0)}\n\nPay here:\n${payUrl}\n\n_Remaining ₹${(halfAmount / 100).toFixed(0)} due at delivery._`,
+            tenant.whatsappNumber
+          )
+          await db.order.update({ where: { id: order.id }, data: { advanceAmount: halfAmount } })
+          await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted. 50% advance link sent (₹${(halfAmount / 100).toFixed(0)}).`, tenant.whatsappNumber)
+        } else {
+          await sendWhatsApp(order.customerPhone, `🎉 Your order *#${shortId}* has been accepted! We'll be in touch shortly.`, tenant.whatsappNumber)
+          await sendWhatsApp(ownerPhone, `✅ Order #${shortId} accepted (no amount set). Customer notified.`, tenant.whatsappNumber)
+        }
+        await sendOwnerList(ownerPhone, tenant, page)
+        return
+      }
+      if (action === 3) {
         await db.order.update({ where: { id: order.id }, data: { status: 'REJECTED' } })
         await sendWhatsApp(order.customerPhone, `We're sorry, your order could not be processed. Please try again or contact us directly.`, tenant.whatsappNumber)
         await sendWhatsApp(ownerPhone, `❌ Order #${shortId} rejected. Customer notified.`, tenant.whatsappNumber)
