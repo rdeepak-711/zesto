@@ -37,6 +37,8 @@ export function defaultBotMessages(tenantId: string) {
     { key: 'cancel_confirmed', tenantId, label: 'Cancel confirmed', value: '✅ Your order has been cancelled. Type *hi* to start a new order.' },
     { key: 'cancel_request_sent', tenantId, label: 'Cancel request sent', value: "Your cancellation request has been sent. We'll confirm shortly." },
     { key: 'choose_more', tenantId, label: 'Choose more items', value: 'Add more? Choose a category:\n\n{categories}\n\nOr type *confirm* to place your order.' },
+    { key: 'custom_order_placed', tenantId, label: 'Custom order sent to baker', value: "🎉 Sent! Our baker will review your request and get back to you with a quote and availability. We'll WhatsApp you shortly." },
+    { key: 'custom_edit_restart', tenantId, label: 'Custom order edit restart prompt', value: "🎂 Let's start over! What's the occasion?\n\n1️⃣ Birthday\n2️⃣ Wedding\n3️⃣ Anniversary\n4️⃣ Corporate / Office\n5️⃣ Other" },
   ]
 }
 

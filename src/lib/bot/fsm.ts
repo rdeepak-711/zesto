@@ -665,7 +665,7 @@ export function processMessage(input: BotInput): BotOutput {
     case 'AWAITING_CUSTOM_CONFIRM': {
       if (m === 'yes' || m === 'confirm') {
         return {
-          reply: messages['custom_order_placed'] ?? '🎉 Sent! Our baker will review your request and get back to you with a quote and availability.',
+          reply: messages['custom_order_placed'] ?? messages['order_placed'] ?? '🎉 Sent! Our baker will review your request and get back to you with a quote and availability.',
           nextState: 'ORDER_PENDING',
           cart,
           context: { ...context, paymentMethod: 'ONLINE' },
