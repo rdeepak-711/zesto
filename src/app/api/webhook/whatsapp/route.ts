@@ -874,6 +874,7 @@ Rules:
       try {
         const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
           method: 'POST',
+          signal: AbortSignal.timeout(8000),
           headers: {
             Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
             'Content-Type': 'application/json',
@@ -894,7 +895,7 @@ Rules:
         const aiJson = await aiRes.json()
         finalDescription = aiJson.choices?.[0]?.message?.content ?? customDescription
       } catch {
-        // AI failed — use raw description
+        // AI failed or timed out — use raw description
       }
     }
 
@@ -917,9 +918,6 @@ Rules:
           notes: noteText,
           paymentMethod,
           deliveryNote: output.context.deliveryNote,
-          items: {
-            create: [{ menuItemId: 'item-custom', name: 'Custom Order', price: 0, quantity: 1, fieldsJson: '[]' }],
-          },
         },
       })
       const customBrief: CustomBrief | undefined = (ctx.customOccasion || ctx.customDate || ctx.customServings || ctx.customDietary || ctx.customBudget) ? {
