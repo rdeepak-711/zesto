@@ -462,7 +462,7 @@ export function processMessage(input: BotInput): BotOutput {
 
       if (matched) {
         if (matched.isCustom) {
-          return { reply: messages['custom_prompt'] ?? "✏️ Tell us exactly what you'd like.", nextState: 'AWAITING_CUSTOM_DESCRIPTION', cart, context: { ...context, selectedCategoryId: matched.id }, placeOrder: false }
+          return { reply: "🎂 Let's design your custom cake!\n\n*What's the occasion?*\n\n1️⃣ Birthday\n2️⃣ Wedding\n3️⃣ Anniversary\n4️⃣ Corporate / Office\n5️⃣ Other\n\nReply with a number or type it out.", nextState: 'AWAITING_CUSTOM_OCCASION', cart, context: { ...context, selectedCategoryId: matched.id }, placeOrder: false }
         }
         const items = menuItems.filter((i) => i.categoryId === matched!.id)
         return { reply: formatItems(items, matched.name, messages), nextState: 'AWAITING_ITEM', cart, context: { ...context, selectedCategoryId: matched.id }, placeOrder: false }
