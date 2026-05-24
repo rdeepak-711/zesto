@@ -858,16 +858,16 @@ Rules:
   if (output.placeOrder) {
     const ctx = output.context
     const isCustom = !!(ctx.customOccasion || ctx.customDate || ctx.customServings || ctx.customDietary || ctx.customBudget || ctx.customDescription)
-    const customDescription = ctx.customDescription
-      ?? (isCustom
-        ? [
-            ctx.customOccasion ? `Occasion: ${ctx.customOccasion}` : '',
-            ctx.customDate ? `Date: ${ctx.customDate}` : '',
-            ctx.customServings ? `Servings: ${ctx.customServings}` : '',
-            ctx.customDietary ? `Dietary: ${ctx.customDietary}` : '',
-            ctx.customBudget ? `Budget: ${ctx.customBudget}` : '',
-          ].filter(Boolean).join(', ')
-        : undefined)
+    const customDescription = isCustom
+      ? [
+          ctx.customOccasion ? `Occasion: ${ctx.customOccasion}` : '',
+          ctx.customDate ? `Date: ${ctx.customDate}` : '',
+          ctx.customServings ? `Servings: ${ctx.customServings}` : '',
+          ctx.customDietary ? `Dietary: ${ctx.customDietary}` : '',
+          ctx.customBudget ? `Budget: ${ctx.customBudget}` : '',
+          ctx.customDescription ? `Notes: ${ctx.customDescription}` : '',
+        ].filter(Boolean).join('\n')
+      : undefined
 
     let finalDescription = customDescription
     if (isCustom && process.env.OPENROUTER_API_KEY && customDescription) {
