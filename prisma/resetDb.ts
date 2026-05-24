@@ -121,6 +121,27 @@ async function seedMenu() {
     ],
   })
 
+  // ── ItemFieldOption: link each Signature Cake item to each field option ────
+  const sigCakeItems = await db.menuItem.findMany({
+    where: { categoryId: sigCakes.id },
+    select: { id: true },
+  })
+
+  const allFieldOptions = await db.categoryFieldOption.findMany({
+    where: { fieldId: { in: [sizeField.id, typeField.id] } },
+    select: { id: true, fieldId: true },
+  })
+
+  await db.itemFieldOption.createMany({
+    data: sigCakeItems.flatMap(item =>
+      allFieldOptions.map(opt => ({
+        menuItemId: item.id,
+        fieldId:    opt.fieldId,
+        optionId:   opt.id,
+      }))
+    ),
+  })
+
   // ── Category: Cupcakes ─────────────────────────────────────────────────────
   const cupcakes = await db.menuCategory.create({
     data: {
