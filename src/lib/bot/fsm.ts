@@ -492,27 +492,6 @@ export function processMessage(input: BotInput): BotOutput {
       return { reply: msg(messages, 'choose_more', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_MORE', cart, context, placeOrder: false }
     }
 
-    case 'AWAITING_DELIVERY_DATE': {
-      // Handled before global commands above; this branch is kept for exhaustiveness
-      const dateInput = message.trim()
-      if (dateInput.length < 3) {
-        const zonesLine = deliveryZones
-          ? `\n_(We deliver to: ${deliveryZones})_`
-          : ''
-        const datePrompt = deliveryDateLabel
-          ?? (messages['delivery_date_prompt'] ?? '📅 When and where would you like your order?')
-        return {
-          reply: `${datePrompt}${zonesLine}`,
-          nextState: 'AWAITING_DELIVERY_DATE',
-          cart,
-          context,
-          placeOrder: false,
-        }
-      }
-      const newContext = { ...context, deliveryNote: dateInput }
-      return { reply: formatOrderSummary(cart, newContext, messages), nextState: 'AWAITING_CONFIRMATION', cart, context: newContext, placeOrder: false }
-    }
-
     case 'AWAITING_CONFIRMATION': {
       if (m === 'yes' || m === 'confirm') {
         if (hasBooking) {
