@@ -766,9 +766,10 @@ export async function POST(req: NextRequest) {
 
       const aiRes = await fetch('https://openrouter.ai/api/v1/chat/completions', {
         method: 'POST',
+        signal: AbortSignal.timeout(8000),
         headers: { Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`, 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          model: 'google/gemma-4-31b-it:free',
+          model: 'openai/gpt-oss-20b:free',
           messages: [
             {
               role: 'system',
@@ -911,7 +912,7 @@ Rules:
             'Content-Type': 'application/json',
           },
           body: JSON.stringify({
-            model: 'google/gemma-4-31b-it:free',
+            model: 'openai/gpt-oss-20b:free',
             messages: [
               {
                 role: 'system',
