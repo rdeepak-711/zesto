@@ -33,19 +33,7 @@ export async function POST(req: NextRequest) {
 
     if (order && order.status !== 'PAID' && order.status !== 'COMPLETED') {
       // Check if this is a 50% advance payment before marking as PAID
-      const isAdvance = (order as any).advanceAmount > 0 && !(order as any).advancePaid
-
-      if (isAdvance) {
-        await db.order.update({
-          where: { id: order.id },
-          data: { advancePaid: true, status: 'ACCEPTED', paymentLinkUrl: payment.id },
-        })
-      } else {
-        await db.order.update({
-          where: { id: order.id },
-          data: { status: 'PAID', paymentLinkUrl: payment.id },
-        })
-      }
+      const isAdvance = order.advanceAmount > 0 && !order.advancePaid
 
       const shortId = order.id.slice(0, 8).toUpperCase()
       const tenant = order.tenantId
@@ -53,7 +41,18 @@ export async function POST(req: NextRequest) {
         : null
 
       if (isAdvance) {
-        const advanceAmt = (order as any).advanceAmount as number
+        // Atomic CAS: only update if advancePaid is still false — prevents duplicate webhook notifications
+        const result = await db.order.updateMany({
+          where: { id: order.id, advancePaid: false, advanceAmount: { gt: 0 } },
+          data: { advancePaid: true, status: 'ACCEPTED', paymentLinkUrl: payment.id },
+        })
+
+        if (result.count === 0) {
+          // Duplicate webhook delivery — advance already recorded, skip notifications
+          return NextResponse.json({ ok: true })
+        }
+
+        const advanceAmt = order.advanceAmount
         await sendWhatsApp(
           order.customerPhone,
           `💳 50% advance received for order *#${shortId}*! Your order is confirmed. Remaining ₹${(advanceAmt / 100).toFixed(0)} due at delivery. Thank you! 🎂`,
@@ -67,6 +66,11 @@ export async function POST(req: NextRequest) {
           )
         }
       } else {
+        await db.order.update({
+          where: { id: order.id },
+          data: { status: 'PAID', paymentLinkUrl: payment.id },
+        })
+
         await sendWhatsApp(
           order.customerPhone,
           `💳 Payment received for order *#${shortId}*! We're now preparing your order. Thank you! 🎂`,

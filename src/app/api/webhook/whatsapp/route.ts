@@ -222,10 +222,10 @@ async function sendOwnerDetail(ownerPhone: string, tenant: Tenant, orderId: stri
     actions.push('2️⃣ Accept (request 50% advance)')
     actions.push('3️⃣ Reject')
   } else if (order.status === 'ACCEPTED') {
-    const advanceLine = (order as any).advancePaid
+    const advanceLine = order.advancePaid
       ? `\n✅ 50% advance received`
-      : (order as any).advanceAmount > 0
-        ? `\n⏳ Awaiting 50% advance (₹${((order as any).advanceAmount / 100).toFixed(0)})`
+      : order.advanceAmount > 0
+        ? `\n⏳ Awaiting 50% advance (₹${(order.advanceAmount / 100).toFixed(0)})`
         : ''
     actions.push(`1️⃣ Request Full Payment${advanceLine}`)
     actions.push('2️⃣ Reject')
