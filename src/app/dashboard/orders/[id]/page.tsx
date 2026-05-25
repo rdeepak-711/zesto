@@ -137,7 +137,7 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
 
   const shortId = order.id.slice(0, 8).toUpperCase()
   const status = STATUS_META[order.status] ?? STATUS_META.PENDING
-  const isCustom = order.items.some((i) => i.name === 'Custom Order')
+  const isCustom = order.items.length === 0 && !!order.notes
   const initials = order.customerName.split(' ').map((w) => w[0]).join('').slice(0, 2).toUpperCase()
 
   return (
