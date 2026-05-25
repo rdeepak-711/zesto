@@ -211,7 +211,11 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
                   <span className="text-sm font-bold text-purple-900">Custom Request</span>
                   <span className="text-[10px] text-purple-500 font-semibold bg-purple-100 px-1.5 py-0.5 rounded-full">Price TBD</span>
                 </div>
-                <p className="text-sm text-purple-800 whitespace-pre-wrap leading-relaxed">{order.notes}</p>
+                <div className="text-sm text-purple-800 leading-relaxed space-y-0.5">
+                  {order.notes.split('\n').map((line, i) => (
+                    <p key={i} dangerouslySetInnerHTML={{ __html: line.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>') }} />
+                  ))}
+                </div>
               </div>
             )}
 
