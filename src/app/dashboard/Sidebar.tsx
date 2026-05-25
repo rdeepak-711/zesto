@@ -3,7 +3,7 @@
 import Link from 'next/link'
 import { usePathname } from 'next/navigation'
 
-export default function Sidebar({ pendingCount = 0, businessName = 'Dashboard', hasBooking = false }: { pendingCount?: number; businessName?: string; hasBooking?: boolean }) {
+export default function Sidebar({ pendingCount = 0, businessName = 'Dashboard' }: { pendingCount?: number; businessName?: string }) {
   const pathname = usePathname()
 
   const NAV = [
@@ -11,7 +11,6 @@ export default function Sidebar({ pendingCount = 0, businessName = 'Dashboard', 
       section: 'Main',
       items: [
         { href: '/dashboard', label: 'Orders', icon: '🛍️', exact: true },
-        ...(hasBooking ? [{ href: '/dashboard/bookings', label: 'Bookings', icon: '📅', exact: false }] : []),
         { href: '/dashboard/conversations', label: 'Conversations', icon: '💬' },
         { href: '/dashboard/customers', label: 'Customers', icon: '👥' },
         { href: '/dashboard/broadcast', label: 'Broadcast', icon: '📣' },

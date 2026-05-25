@@ -26,18 +26,8 @@ const solution = [
   },
   {
     step: '02',
-    title: 'Appointment booking',
-    desc: 'Salons and service businesses get a booking FSM — name, age, date, time slot — with a calendar dashboard for the owner. Reschedule or cancel with one click.',
-  },
-  {
-    step: '03',
-    title: 'Enquiry capture',
-    desc: 'Photo studios and custom shops use AI-assisted enquiry mode — the bot captures what the customer needs, routes to the right product flow, and notifies the owner.',
-  },
-  {
-    step: '04',
     title: 'Owner dashboard',
-    desc: 'Every order, booking, conversation, customer, and revenue metric — in one web panel. Manage from desktop or phone. No extra app.',
+    desc: 'Every order, conversation, customer, and revenue metric — in one web panel. Manage from desktop or phone. No extra app.',
   },
 ]
 
@@ -46,16 +36,6 @@ const niches = [
     icon: '🎂',
     name: 'Bakeries',
     desc: 'Cart ordering with cake customisation fields (flavour, size, message on cake). Delivery date collection. Razorpay advance payment.',
-  },
-  {
-    icon: '💅',
-    name: 'Salons & Makeup Studios',
-    desc: 'Booking flow with service selection, preferred slot, name and age capture. Calendar dashboard. Reschedule / cancel notifications.',
-  },
-  {
-    icon: '📸',
-    name: 'Photo Studios',
-    desc: 'Enquiry mode with product keyword routing — photo frames, acrylics, passport photos. AI reformats bespoke enquiries for the owner.',
   },
   {
     icon: '🍕',
@@ -77,7 +57,7 @@ const niches = [
 const why = [
   {
     heading: 'Capability flags, not hardcoded business types',
-    body: 'The bot branches on `hasCart`, `hasBooking`, `hasEnquiry`, `hasDelivery` flags — not a string like "bakery". Adding a new business type requires zero code changes.',
+    body: 'The bot branches on `hasCart`, `hasDelivery` flags — not a string like "bakery". Adding a new business type requires zero code changes.',
   },
   {
     heading: 'Multi-tenant from day one',
@@ -85,7 +65,7 @@ const why = [
   },
   {
     heading: 'AI built in, not bolted on',
-    body: 'Any customer question in any state (mid-order, mid-booking) triggers an AI info-bot — Gemini via OpenRouter — with full menu knowledge and conversation context.',
+    body: 'Any customer question in any state (mid-order) triggers an AI info-bot — Gemini via OpenRouter — with full menu knowledge and conversation context.',
   },
   {
     heading: 'Owner-first design',

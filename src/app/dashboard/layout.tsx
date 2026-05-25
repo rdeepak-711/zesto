@@ -9,12 +9,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
 
   const [pendingCount, tenant] = await Promise.all([
     db.order.count({ where: { tenantId: auth.tenantId, status: 'PENDING' } }),
-    db.tenant.findUnique({ where: { id: auth.tenantId }, select: { businessName: true, hasBooking: true } }),
+    db.tenant.findUnique({ where: { id: auth.tenantId }, select: { businessName: true } }),
   ])
 
   return (
     <div className="h-screen bg-slate-50 flex overflow-hidden">
-      <Sidebar pendingCount={pendingCount} businessName={tenant?.businessName ?? 'Dashboard'} hasBooking={tenant?.hasBooking ?? false} />
+      <Sidebar pendingCount={pendingCount} businessName={tenant?.businessName ?? 'Dashboard'} />
       <main className="ml-[220px] flex-1 overflow-auto flex flex-col">{children}</main>
     </div>
   )

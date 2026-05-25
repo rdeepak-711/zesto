@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from 'react'
 
-type Scenario = 'order' | 'booking' | 'track'
+type Scenario = 'order' | 'track'
 
 type Bubble = {
   dir: 'in' | 'out'
@@ -12,7 +12,6 @@ type Bubble = {
 
 function buildScenarios(
   businessName: string,
-  hasBooking: boolean,
   welcomeMsg: string,
 ): Record<Scenario, Bubble[]> {
   const welcome = welcomeMsg || `👋 Welcome to ${businessName}! What would you like today?`
@@ -29,20 +28,6 @@ function buildScenarios(
       { dir: 'in',  text: `🛒 *Cart:* Chocolate Truffle Cake × 2 — ₹1,100\n\nType *confirm* to place order or keep browsing.`, time: '10:03' },
       { dir: 'out', text: 'confirm', time: '10:04' },
       { dir: 'in',  text: `🎉 Order placed! *#SC-001*\n\nTotal: ₹1,100\nWe'll notify you when it's ready. 🙏`, time: '10:04' },
-    ],
-    booking: [
-      { dir: 'out', text: 'Hi', time: '11:00' },
-      { dir: 'in',  text: welcome, time: '11:00' },
-      { dir: 'out', text: '1', time: '11:01' },
-      { dir: 'in',  text: `Choose a service:\n\n1. Hair Cut — ₹199\n2. Hair Spa — ₹699\n3. Facial — ₹399`, time: '11:01' },
-      { dir: 'out', text: '1', time: '11:02' },
-      { dir: 'in',  text: `Hair Cut selected! Type *confirm* to book.`, time: '11:02' },
-      { dir: 'out', text: 'confirm', time: '11:03' },
-      { dir: 'in',  text: `What's your name?`, time: '11:03' },
-      { dir: 'out', text: 'Priya', time: '11:04' },
-      { dir: 'in',  text: `What date works for you?`, time: '11:04' },
-      { dir: 'out', text: 'Tomorrow', time: '11:05' },
-      { dir: 'in',  text: `📅 *Booking confirmed!*\n\nHair Cut on Tomorrow for Priya.\nWe'll confirm the exact time shortly. 🙏`, time: '11:05' },
     ],
     track: [
       { dir: 'out', text: 'track', time: '14:30' },
@@ -69,22 +54,18 @@ function formatBubbleText(text: string) {
 
 const SCENARIO_DELAYS: Record<Scenario, number[]> = {
   order:   [300, 900, 1700, 2700, 3600, 4500, 5400, 6400, 7400, 8300],
-  booking: [300, 900, 1700, 2600, 3500, 4400, 5300, 6200, 7000, 7900, 8800, 9700],
   track:   [400, 1200],
 }
 
 export default function BotOrderPreview({
   businessName,
-  hasBooking,
   welcomeMsg,
 }: {
   businessName: string
-  hasBooking: boolean
   welcomeMsg: string
 }) {
   const tabs = [
     { key: 'order' as Scenario,   icon: '🛍️', label: 'Order Flow',   steps: '5 steps' },
-    ...(hasBooking ? [{ key: 'booking' as Scenario, icon: '📅', label: 'Booking',    steps: '6 steps' }] : []),
     { key: 'track' as Scenario,   icon: '📦', label: 'Track Order',  steps: '1 step'  },
   ]
 
@@ -93,7 +74,7 @@ export default function BotOrderPreview({
   const timerRef = useRef<ReturnType<typeof setTimeout>[]>([])
   const chatRef = useRef<HTMLDivElement>(null)
 
-  const scenarios = buildScenarios(businessName, hasBooking, welcomeMsg)
+  const scenarios = buildScenarios(businessName, welcomeMsg)
   const bubbles = scenarios[scenario]
 
   function startAnimation() {

@@ -18,21 +18,6 @@ const sections = [
     imageLeft: false,
   },
   {
-    id: 'bookings',
-    label: 'Bookings',
-    title: 'Calendar for appointments',
-    desc: 'Service businesses (salons, studios, clinics) get a full booking calendar. Customers book via WhatsApp — you see them on a monthly calendar view. Click any booking to open a detail panel with the service, price, preferred date/time, and customer info. Confirm with a notification, reschedule to a new slot, or cancel — all with one click.',
-    bullets: [
-      'Monthly calendar view with booking dots',
-      'Click to open: Confirm + Notify / Reschedule + Notify / Cancel',
-      'All Bookings list with short IDs and status',
-      'Booking status: Pending / Confirmed / Cancelled / Completed',
-    ],
-    image: '/screenshots/bookings.avif',
-    imageAlt: 'Bookings calendar showing monthly view with GZ-001 detail panel open',
-    imageLeft: true,
-  },
-  {
     id: 'conversations',
     label: 'Conversations',
     title: 'Every customer conversation',
@@ -66,12 +51,11 @@ const sections = [
     id: 'bot',
     label: 'Bot Script',
     title: 'Visual bot script editor',
-    desc: 'See and edit every message the bot sends — welcome, cart empty, confirm hint, cancel, and more. The FSM flow diagram shows every state and transition. For enquiry-mode businesses (photo studios etc.), a dedicated enquiry editor manages keyword routing and multi-step product flows. A live phone preview animates the full conversation on the right side.',
+    desc: 'See and edit every message the bot sends — welcome, cart empty, confirm hint, cancel, and more. The FSM flow diagram shows every state and transition. A live phone preview animates the full conversation on the right side.',
     bullets: [
       'FSM flow diagram with all states and transitions',
       'Edit every bot message inline',
-      'Enquiry Mode: keyword routing + multi-step product flows',
-      'Live animated phone preview (tenant-specific scenarios)',
+      'Live animated phone preview',
     ],
     image: '/screenshots/bot-script.avif',
     imageAlt: 'Bot Script page showing FSM flow diagram and live phone preview',
@@ -131,8 +115,8 @@ export default function ProductPage() {
           Everything you need to run your business
         </h1>
         <p className="text-xl text-gray-500 leading-relaxed max-w-2xl mx-auto mb-10">
-          Orders, bookings, conversations, menu, analytics, and settings — all in one clean web dashboard.
-          Built for bakeries, salons, photo studios, and more.
+          Orders, conversations, menu, analytics, and settings — all in one clean web dashboard.
+          Built for bakeries and food businesses.
         </p>
         {/* Jump links */}
         <div className="flex flex-wrap justify-center gap-2">

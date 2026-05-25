@@ -4,25 +4,10 @@ import { getSession, saveSession, resetSession, isSessionStale } from '@/lib/bot
 import { processMessage, type BotState, itemTotal } from '@/lib/bot/fsm'
 import { sendWhatsApp } from '@/lib/twilio'
 import { notifyBaker, type CustomBrief } from '@/lib/bakerNotify'
-import { handleEnquiryState, ENQUIRY_STATES } from '@/lib/bot/enquiry'
-import { parseBookingCommand } from '@/lib/bot/bookingCommands'
 import { validateRequest } from 'twilio'
 import type { Tenant } from '@prisma/client'
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? ''
-
-function generateShortId(businessName: string, sequentialNum: number): string {
-  const prefix = businessName
-    .split(/\s+/)
-    .map((w) => w[0]?.toUpperCase() ?? '')
-    .join('')
-    .slice(0, 3)
-  return `${prefix}-${String(sequentialNum).padStart(3, '0')}`
-}
-
-function fill(template: string, vars: Record<string, string>): string {
-  return template.replace(/\{(\w+)\}/g, (_, k) => vars[k] ?? `{${k}}`)
-}
 
 function isWithinBusinessHours(tenant: { timezone: string; openDays: string; openTime: string; closeTime: string }): boolean {
   try {
@@ -256,73 +241,11 @@ async function sendOwnerDetail(ownerPhone: string, tenant: Tenant, orderId: stri
   })
 }
 
-// ── Booking command handler ───────────────────────────────────────────────────
-
-async function handleBookingCommand(cmd: string, shortId: string, extra: string, ownerPhone: string, tenant: { id: string; whatsappNumber: string }, messages: Record<string, string>) {
-  try {
-    const booking = await db.booking.findUnique({
-      where: { shortId },
-      include: { order: true },
-    })
-
-    if (!booking || booking.tenantId !== tenant.id) {
-      await sendWhatsApp(ownerPhone, `Booking ${shortId} not found.`, tenant.whatsappNumber)
-      return
-    }
-
-    const customerPhone = booking.customerPhone
-    const [datePart, timePart] = extra ? extra.split(/\s+/, 2) : [booking.preferredDate, booking.preferredTime]
-
-    if (cmd === 'confirm') {
-      await db.booking.update({
-        where: { shortId },
-        data: { status: 'CONFIRMED', confirmedDate: datePart || booking.preferredDate, confirmedTime: timePart || booking.preferredTime },
-      })
-      const d = datePart || booking.preferredDate
-      const t = timePart || booking.preferredTime
-      const customerMsg = fill(messages['booking_confirmed'] ?? '✅ Your appointment is confirmed for *{date}* at *{time}*. See you soon! 💅', { date: d, time: t })
-      await sendWhatsApp(customerPhone, customerMsg, tenant.whatsappNumber)
-      await sendWhatsApp(ownerPhone, `✅ Booking ${shortId} confirmed — ${d} ${t}. Customer notified.`, tenant.whatsappNumber)
-    } else if (cmd === 'reschedule') {
-      await db.booking.update({
-        where: { shortId },
-        data: { status: 'CONFIRMED', confirmedDate: datePart || booking.preferredDate, confirmedTime: timePart || booking.preferredTime },
-      })
-      const d = datePart || booking.preferredDate
-      const t = timePart || booking.preferredTime
-      const customerMsg = fill(messages['booking_rescheduled'] ?? 'Your appointment has been moved to *{date}* at *{time}*. See you then!', { date: d, time: t })
-      await sendWhatsApp(customerPhone, customerMsg, tenant.whatsappNumber)
-      await sendWhatsApp(ownerPhone, `📅 Booking ${shortId} rescheduled to ${d} ${t}. Customer notified.`, tenant.whatsappNumber)
-    } else if (cmd === 'cancel') {
-      await db.booking.update({ where: { shortId }, data: { status: 'CANCELLED' } })
-      const customerMsg = messages['booking_cancelled'] ?? 'Your booking has been cancelled. Feel free to book again anytime 🙏'
-      await sendWhatsApp(customerPhone, customerMsg, tenant.whatsappNumber)
-      await sendWhatsApp(ownerPhone, `❌ Booking ${shortId} cancelled. Customer notified.`, tenant.whatsappNumber)
-    }
-  } catch (err) {
-    console.error('[handleBookingCommand] Failed to process booking command:', err)
-    await sendWhatsApp(ownerPhone, `Failed to process booking command for ${shortId}. Please check the dashboard.`, tenant.whatsappNumber).catch(() => {})
-  }
-}
-
 // ── Main owner handler ────────────────────────────────────────────────────────
 
 async function handleOwnerReply(body: string, ownerPhone: string, tenant: Tenant) {
   const m = body.trim().toLowerCase()
   const { state, context } = await getOwnerSession(ownerPhone, tenant.id)
-
-  // Booking commands: confirm/reschedule/cancel <shortId> [date time]
-  const bookingMatch = parseBookingCommand(body)
-  if (bookingMatch) {
-    try {
-      const botMessages = await db.botMessage.findMany({ where: { tenantId: tenant.id } })
-      const msgs = Object.fromEntries(botMessages.map((r) => [r.key, r.value]))
-      await handleBookingCommand(bookingMatch.cmd, bookingMatch.shortId, bookingMatch.extra, ownerPhone, tenant, msgs)
-    } catch (err) {
-      console.error('[handleOwnerReply] Booking command failed:', err)
-    }
-    return
-  }
 
   if (m === 'orders' || m === 'list' || m === 'menu') {
     await sendOwnerList(ownerPhone, tenant, 0)
@@ -560,37 +483,6 @@ export async function POST(req: NextRequest) {
   }
 
   await db.message.create({ data: { tenantId: tenant.id, customerPhone, body, direction: 'IN', twilioSid: messageSid ?? null } })
-
-  // ── Enquiry mode ─────────────────────────────────────────────────────────
-  // Customer leads — bot reacts to what they say, no forced welcome.
-  // IDLE state is passed directly to the enquiry handler which detects intent.
-  if (messages['enquiry_mode'] === 'true' && (session.state === 'IDLE' || ENQUIRY_STATES.includes(session.state))) {
-    const result = await handleEnquiryState({
-      tenantId: tenant.id,
-      customerPhone,
-      ownerPhone: tenant.ownerPhone,
-      whatsappNumber: tenant.whatsappNumber,
-      body,
-      mediaUrl,
-      numMedia,
-      state: session.state,
-      context: session.context as Parameters<typeof handleEnquiryState>[0]['context'],
-      messages,
-      twilioAccountSid: process.env.TWILIO_ACCOUNT_SID ?? '',
-      twilioAuthToken: process.env.TWILIO_AUTH_TOKEN ?? '',
-    })
-
-    if (result) {
-      await db.message.create({ data: { tenantId: tenant.id, customerPhone, body: result.reply, direction: 'OUT' } })
-      await sendWhatsApp(customerPhone, result.reply, tenant.whatsappNumber)
-      if (result.done) {
-        await resetSession(customerPhone, tenant.id)
-      } else {
-        await saveSession(customerPhone, result.nextState, session.cart, result.nextContext, tenant.id)
-      }
-      return new NextResponse('', { status: 200 })
-    }
-  }
 
   // ── Feedback collection (1-5 rating for completed order) ─────────────────
   const rating = parseInt(body.trim(), 10)
@@ -842,41 +734,10 @@ Rules:
     deliveryDateEnabled: tenant.deliveryDateEnabled,
     deliveryDateLabel: tenant.deliveryDateLabel,
     businessName: tenant.businessName,
-    hasBooking: tenant.hasBooking,
     deliveryZones: tenant.deliveryZones ?? undefined,
   })
 
-  // ── Slot availability enrichment ─────────────────────────────────────────
-  // When transitioning to AWAITING_BOOKING_TIME, enrich reply with slot counts
-  let fsmReply = output.reply
-  if (output.nextState === 'AWAITING_BOOKING_TIME' && output.context.bookingDate && tenant.hasBooking) {
-    const confirmedBookings = await db.booking.findMany({
-      where: { tenantId: tenant.id, status: 'CONFIRMED' },
-      select: { confirmedDate: true, confirmedTime: true },
-    })
-    const dateStr = (output.context.bookingDate ?? '').toLowerCase()
-    const relevant = confirmedBookings.filter((b) =>
-      (b.confirmedDate ?? '').toLowerCase().includes(dateStr) ||
-      dateStr.includes((b.confirmedDate ?? '').toLowerCase())
-    )
-    const counts = { morning: 0, afternoon: 0, evening: 0 }
-    for (const b of relevant) {
-      const t = (b.confirmedTime ?? '').toLowerCase()
-      const isMorning = t.includes('morning') || /\b(9|10|11)\b/.test(t)
-      const isAfternoon = t.includes('afternoon') || /\b(12|1pm|2pm|3pm)\b/.test(t)
-      const isEvening = t.includes('evening') || /\b(4pm|5pm|6pm|7pm)\b/.test(t)
-      if (isMorning) counts.morning++
-      else if (isAfternoon) counts.afternoon++
-      else if (isEvening) counts.evening++
-    }
-    const slot = (label: string, n: number) => n >= 3 ? `${label} ⚠️ Filling up` : `${label} ✅ Available`
-    const base = messages['booking_ask_time'] ?? 'What time works best?'
-    fsmReply =
-      `${base}\n\n` +
-      `1. ${slot('Morning (9am–12pm)', counts.morning)}\n` +
-      `2. ${slot('Afternoon (12pm–4pm)', counts.afternoon)}\n` +
-      `3. ${slot('Evening (4pm–8pm)', counts.evening)}`
-  }
+  const fsmReply = output.reply
 
   if (output.placeOrder) {
     const ctx = output.context
@@ -1012,48 +873,10 @@ Rules:
         })
       }
 
-      if (tenant.hasBooking && output.context.customerName && output.context.bookingDate) {
-        try {
-          const shortId = generateShortId(tenant.businessName, Date.now() % 100000)
-          await db.booking.create({
-            data: {
-              tenantId: tenant.id,
-              orderId: order.id,
-              shortId,
-              customerPhone,
-              customerName: output.context.customerName,
-              customerAge: output.context.customerAge ?? null,
-              preferredDate: output.context.bookingDate,
-              preferredTime: output.context.bookingTime ?? '',
-            },
-          })
-          const serviceLines = output.cart.map((i) => `• ${i.name} — ₹${(itemTotal(i) / 100).toFixed(0)}`).join('\n')
-          const ownerMsg =
-            `📅 *New Booking Request* [${shortId}]\n` +
-            `👤 ${output.context.customerName}, age ${output.context.customerAge ?? '?'}\n` +
-            `📱 ${customerPhone}\n` +
-            `📆 Preferred: ${output.context.bookingDate}, ${output.context.bookingTime ?? '?'}\n\n` +
-            `Services:\n${serviceLines}\n` +
-            `Total: ₹${(totalAmount / 100).toFixed(0)}\n\n` +
-            `Reply:\n` +
-            `*confirm ${shortId}*\n` +
-            `*confirm ${shortId} 22may 2pm*\n` +
-            `*reschedule ${shortId} 23may morning*\n` +
-            `*cancel ${shortId}*`
-          try { await sendWhatsApp(tenant.ownerPhone, ownerMsg, tenant.whatsappNumber) } catch { /* owner WA unavailable */ }
-        } catch (bookingErr) {
-          console.error('[booking] Failed to create booking:', bookingErr)
-          try {
-            await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, tenant.whatsappNumber)
-            await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
-          } catch { /* owner notification failed */ }
-        }
-      } else {
-        try {
-          await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, tenant.whatsappNumber)
-          await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
-        } catch { /* owner notification failed */ }
-      }
+      try {
+        await notifyBaker(order.id, output.cart, totalAmount, customerPhone, tenant.ownerPhone, tenant.whatsappNumber)
+        await saveOwnerSession(tenant.ownerPhone, tenant.id, 'BAKER_DETAIL', { selectedOrderId: order.id })
+      } catch { /* owner notification failed */ }
     }
 
     await resetSession(customerPhone, tenant.id)

@@ -28,20 +28,19 @@ const steps = [
   },
   {
     num: '2',
-    title: 'Order or booking placed',
-    desc: 'Cart built, booking scheduled, or enquiry captured — all inside WhatsApp. No app download, no account.',
+    title: 'Order placed',
+    desc: 'Cart built inside WhatsApp. No app download, no account required.',
   },
   {
     num: '3',
     title: 'You manage from the dashboard',
-    desc: 'Accept orders, confirm bookings, send payment links, track revenue. One dashboard, all channels.',
+    desc: 'Accept orders, send payment links, track revenue. One dashboard, all channels.',
   },
 ]
 
 const features = [
-  { icon: '🤖', title: 'Conversational Bot', desc: 'Full ordering, booking, and enquiry flows handled automatically. Works 24/7.' },
+  { icon: '🤖', title: 'Conversational Bot', desc: 'Full ordering flows handled automatically. Works 24/7.' },
   { icon: '📋', title: 'Order Dashboard', desc: 'Every order in one place. Accept, reject, track payment, set delivery time.' },
-  { icon: '📅', title: 'Booking Calendar', desc: 'Appointment booking FSM with calendar view, Confirm / Reschedule / Cancel actions.' },
   { icon: '🍰', title: 'Menu Manager', desc: 'Add items with images, prices, and category fields. Hide seasonal items in one tap.' },
   { icon: '📊', title: 'Analytics', desc: 'Revenue charts, top items, peak hours, repeat rate — all from real order data.' },
   { icon: '📣', title: 'Broadcast', desc: 'Send promotions or updates to all past customers in one click via WhatsApp.' },
@@ -94,7 +93,7 @@ export default function HomePage() {
               <span className="text-orange-500">WhatsApp.</span>
             </h1>
             <p className="text-lg text-gray-500 leading-relaxed mb-6">
-              Zesto turns WhatsApp into your ordering counter, booking desk, and enquiry line.
+              Zesto turns WhatsApp into your ordering counter.
               Customers chat — your bot handles it. You manage everything from one dashboard.
             </p>
             {/* Niche pills */}
@@ -179,9 +178,6 @@ export default function HomePage() {
               <Image src="/screenshots/bot-script.avif" alt="Bot Script editor" width={1440} height={900} className="w-full h-auto" />
             </div>
             <div className="flex flex-col gap-4">
-              <div className="rounded-xl overflow-hidden shadow-lg border border-gray-200 flex-1">
-                <Image src="/screenshots/bookings.avif" alt="Bookings calendar" width={1440} height={900} className="w-full h-auto" />
-              </div>
               <div className="rounded-xl overflow-hidden shadow-lg border border-gray-200 flex-1">
                 <Image src="/screenshots/analytics.avif" alt="Analytics" width={1440} height={900} className="w-full h-auto" />
               </div>

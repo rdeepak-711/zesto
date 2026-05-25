@@ -41,10 +41,6 @@ export type BotContext = {
   // order selection state (track / cancel list)
   trackOrderIds?: string[]
   cancelOrderIds?: string[]
-  // booking flow fields
-  customerAge?: number
-  bookingDate?: string
-  bookingTime?: string
   // custom order brief fields
   customOccasion?: string
   customDate?: string
