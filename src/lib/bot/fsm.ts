@@ -18,11 +18,6 @@ export type BotState =
   | 'AWAITING_CUSTOM_BUDGET'
   | 'AWAITING_PAYMENT_METHOD'
   | 'ORDER_PENDING'
-  | 'AWAITING_NAME'
-  | 'AWAITING_AGE'
-  | 'AWAITING_BOOKING_DATE'
-  | 'AWAITING_BOOKING_TIME'
-  | 'PENDING_BOOKING'
 
 export type Category = { id: string; name: string; sortOrder: number; isCustom: boolean }
 export type MenuItem = {
@@ -84,7 +79,6 @@ export type BotInput = {
   deliveryDateEnabled?: boolean
   deliveryDateLabel?: string
   businessName?: string
-  hasBooking?: boolean
   deliveryZones?: string
 }
 
@@ -219,7 +213,6 @@ export function processMessage(input: BotInput): BotOutput {
     deliveryDateEnabled = true,
     deliveryDateLabel,
     businessName = '',
-    hasBooking = false,
     deliveryZones,
   } = input
   const m = message.trim().toLowerCase()
@@ -232,11 +225,6 @@ export function processMessage(input: BotInput): BotOutput {
       const nextState = rule.nextState === 'SAME' ? state : (rule.nextState as BotState)
       return { reply: rule.reply, nextState, cart, context, placeOrder: false }
     }
-  }
-
-  // Terminal booking state — intercept before global commands
-  if (state === 'PENDING_BOOKING') {
-    return { reply: messages['booking_pending_reply'] ?? "Your booking is being reviewed. We'll confirm your exact time soon! 🌸", nextState: 'PENDING_BOOKING', cart, context, placeOrder: false }
   }
 
   // Delivery date state — intercept before global commands so short inputs re-prompt with zones
@@ -309,7 +297,7 @@ export function processMessage(input: BotInput): BotOutput {
       if (m === 'back') {
         return { reply: msg(messages, 'back_to_categories', { categories: formatCategoryList(sorted) }), nextState: 'AWAITING_CATEGORY', cart, context: { ...context, selectedCategoryId: undefined }, placeOrder: false }
       }
-      const catItems = menuItems.filter((i) => i.categoryId === context.selectedCategoryId).sort((a, b) => a.name.localeCompare(b.name))
+      const catItems = menuItems.filter((i) => i.categoryId === context.selectedCategoryId)
       const byNumber = parseInt(m, 10)
       let matched: MenuItem | undefined
       if (!isNaN(byNumber) && byNumber >= 1 && byNumber <= catItems.length) {
@@ -466,9 +454,6 @@ export function processMessage(input: BotInput): BotOutput {
         if (minOrderAmount > 0 && cartTotal < minOrderAmount) {
           return { reply: msg(messages, 'min_order', { amount: formatPrice(minOrderAmount) }) || `Minimum order is ${formatPrice(minOrderAmount)}.`, nextState: 'AWAITING_MORE', cart, context, placeOrder: false }
         }
-        if (hasBooking) {
-          return { reply: messages['booking_ask_name'] ?? 'What is your name?', nextState: 'AWAITING_NAME', cart, context, placeOrder: false }
-        }
         if (!deliveryDateEnabled) {
           return { reply: formatOrderSummary(cart, context, messages), nextState: 'AWAITING_CONFIRMATION', cart, context, placeOrder: false }
         }
@@ -494,12 +479,6 @@ export function processMessage(input: BotInput): BotOutput {
 
     case 'AWAITING_CONFIRMATION': {
       if (m === 'yes' || m === 'confirm') {
-        if (hasBooking) {
-          return {
-            reply: messages['booking_pending'] ?? "Got it! 🎉 Your booking request is in. We'll confirm your exact time very soon!",
-            nextState: 'PENDING_BOOKING', cart, context: { ...context, paymentMethod: 'ONLINE' }, placeOrder: true,
-          }
-        }
         return {
           reply: messages['order_placed'] ?? '🎉 Order placed! We\'ll send you a payment link once confirmed.',
           nextState: 'ORDER_PENDING', cart, context: { ...context, paymentMethod: 'ONLINE' }, placeOrder: true,
@@ -668,75 +647,6 @@ export function processMessage(input: BotInput): BotOutput {
         return { reply: messages['order_pending'] ?? "Your order is being reviewed.", nextState: 'ORDER_PENDING', cart, context, placeOrder: false }
       }
       return { reply: messages['order_pending'] ?? "Your order is being reviewed. Type *hi* to start a new order.", nextState: 'ORDER_PENDING', cart, context, placeOrder: false }
-    }
-
-    case 'AWAITING_NAME': {
-      const name = message.trim()
-      if (name.length < 2) {
-        return { reply: messages['booking_ask_name'] ?? 'What is your name?', nextState: 'AWAITING_NAME', cart, context, placeOrder: false }
-      }
-      return {
-        reply: messages['booking_ask_age'] ?? 'How old are you? (We ask for treatment suitability 🌸)',
-        nextState: 'AWAITING_AGE',
-        cart,
-        context: { ...context, customerName: name },
-        placeOrder: false,
-      }
-    }
-
-    case 'AWAITING_AGE': {
-      const age = parseInt(m, 10)
-      if (isNaN(age) || age < 10 || age > 100) {
-        return { reply: messages['booking_ask_age'] ?? 'How old are you? 🌸', nextState: 'AWAITING_AGE', cart, context, placeOrder: false }
-      }
-      return {
-        reply: messages['booking_ask_date'] ?? 'What date would you prefer? (e.g. *this Saturday*, *22 May*)',
-        nextState: 'AWAITING_BOOKING_DATE',
-        cart,
-        context: { ...context, customerAge: age },
-        placeOrder: false,
-      }
-    }
-
-    case 'AWAITING_BOOKING_DATE': {
-      const date = message.trim()
-      if (date.length < 2) {
-        return { reply: messages['booking_ask_date'] ?? 'What date would you prefer?', nextState: 'AWAITING_BOOKING_DATE', cart, context, placeOrder: false }
-      }
-      // Reply is a placeholder — webhook enriches it with slot availability before sending
-      return {
-        reply: messages['booking_ask_time'] ?? 'What time works best?\n1. Morning (9am–12pm)\n2. Afternoon (12pm–4pm)\n3. Evening (4pm–8pm)',
-        nextState: 'AWAITING_BOOKING_TIME',
-        cart,
-        context: { ...context, bookingDate: date },
-        placeOrder: false,
-      }
-    }
-
-    case 'AWAITING_BOOKING_TIME': {
-      const timeMap: Record<string, string> = {
-        '1': 'morning', 'morning': 'morning',
-        '2': 'afternoon', 'afternoon': 'afternoon',
-        '3': 'evening', 'evening': 'evening',
-      }
-      const picked = timeMap[m]
-      if (!picked) {
-        return { reply: messages['booking_ask_time'] ?? 'What time works best?\n1. Morning (9am–12pm)\n2. Afternoon (12pm–4pm)\n3. Evening (4pm–8pm)', nextState: 'AWAITING_BOOKING_TIME', cart, context, placeOrder: false }
-      }
-      const cartStr = formatCart(cart, messages)
-      const summary =
-        `${cartStr}\n\n` +
-        `📅 *Date:* ${context.bookingDate}\n` +
-        `⏰ *Time:* ${picked}\n` +
-        `👤 *Name:* ${context.customerName}\n` +
-        `🎂 *Age:* ${context.customerAge}`
-      return {
-        reply: `${summary}\n\n${messages['booking_confirm_prompt'] ?? 'Shall we book this? Reply *yes* to confirm.'}`,
-        nextState: 'AWAITING_CONFIRMATION',
-        cart,
-        context: { ...context, bookingTime: picked },
-        placeOrder: false,
-      }
     }
 
     default: {
