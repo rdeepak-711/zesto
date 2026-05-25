@@ -35,13 +35,15 @@ async function acceptOrder(orderId: string, formData: FormData) {
   const order = await db.order.findUnique({ where: { id: orderId, tenantId: auth.tenantId } })
   if (!order || order.status !== 'PENDING') return
   const deliveryNote = (formData.get('deliveryNote') as string | null)?.trim() || order.deliveryNote || null
+  const priceRaw = (formData.get('quotedPrice') as string | null)?.trim()
+  const totalAmount = priceRaw && /^\d+$/.test(priceRaw) ? parseInt(priceRaw) * 100 : order.totalAmount
   await db.order.update({
     where: { id: orderId },
-    data: { status: 'ACCEPTED', bakerNotifiedAt: new Date(), deliveryNote },
+    data: { status: 'ACCEPTED', bakerNotifiedAt: new Date(), deliveryNote, totalAmount },
   })
   const deliveryLine = deliveryNote ? `\n📅 *Delivery:* ${deliveryNote}` : ''
   const from = tenant?.whatsappNumber
-  if (order.totalAmount > 0) {
+  if (totalAmount > 0) {
     const payUrl = `${APP_URL}/pay/${orderId}`
     await sendWhatsApp(
       order.customerPhone,
@@ -283,6 +285,21 @@ export default async function OrderDetailPage({ params }: { params: Promise<{ id
             {order.status === 'PENDING' && (
               <div className="space-y-3">
                 <form action={acceptWithId} className="space-y-2">
+                  {isCustom && (
+                    <div>
+                      <label className="block text-xs font-medium text-gray-500 mb-1">
+                        Quoted price (₹) <span className="text-red-400">*</span>
+                      </label>
+                      <input
+                        name="quotedPrice"
+                        type="number"
+                        min="1"
+                        required
+                        placeholder="e.g. 1500"
+                        className="w-full border border-gray-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-400/40 focus:border-orange-400"
+                      />
+                    </div>
+                  )}
                   <div>
                     <label className="block text-xs font-medium text-gray-500 mb-1">
                       Delivery date/time
