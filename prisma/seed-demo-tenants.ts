@@ -1,5 +1,5 @@
 /**
- * Creates the 5 demo tenants and seeds their bot messages + custom category.
+ * Seeds the Sweet Crumbs demo bakery tenant.
  * Safe to re-run — idempotent via upsert on whatsappNumber unique constraint.
  * Usage: npx tsx prisma/seed-demo-tenants.ts
  */
@@ -20,38 +20,10 @@ const DEMO_TENANTS = [
     whatsappNumber: '+919900000001',
     currency: 'INR',
   },
-  {
-    businessName: 'Spice Garden',
-    businessType: 'restaurant',
-    ownerPhone: '+919900000002',
-    whatsappNumber: '+919900000002',
-    currency: 'INR',
-  },
-  {
-    businessName: 'Print Studio',
-    businessType: 'poster seller',
-    ownerPhone: '+919900000003',
-    whatsappNumber: '+919900000003',
-    currency: 'INR',
-  },
-  {
-    businessName: 'Threads Co',
-    businessType: 't-shirt seller',
-    ownerPhone: '+919900000004',
-    whatsappNumber: '+919900000004',
-    currency: 'INR',
-  },
-  {
-    businessName: 'Step Up',
-    businessType: 'shoe seller',
-    ownerPhone: '+919900000005',
-    whatsappNumber: '+919900000005',
-    currency: 'INR',
-  },
 ]
 
 async function main() {
-  console.log('Creating 5 demo tenants...\n')
+  console.log('Seeding Sweet Crumbs demo tenant...\n')
 
   for (const data of DEMO_TENANTS) {
     // Upsert tenant on whatsappNumber unique key
