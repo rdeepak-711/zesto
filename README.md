@@ -5,7 +5,6 @@
 A multi-tenant SaaS platform that turns WhatsApp into a fully automated ordering counter, booking desk, and enquiry line — backed by a clean owner dashboard.
 
 **Live product:** https://outbuiltit.com  
-**Demo deployment:** [Home](https://zesto-rose.vercel.app) · [The Idea](https://zesto-rose.vercel.app/idea) · [Dashboard Tour](https://zesto-rose.vercel.app/product)
 
 ---
 
@@ -115,7 +114,7 @@ npx localtunnel --port 3000
 
 ## Demo Tenants
 
-Three demo tenants are live on https://zesto-rose.vercel.app:
+Three demo tenants are seeded for local testing:
 
 | Business | Type | Login number |
 |----------|------|-------------|
