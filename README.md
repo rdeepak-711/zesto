@@ -1,9 +1,11 @@
-# Zesto — WhatsApp Bot + Owner Dashboard for Any Business
+# Outbuiltit — WhatsApp Bot + Owner Dashboard for Any Business
+
+> Formerly **Zesto**. (Repo name kept as `zesto`.)
 
 A multi-tenant SaaS platform that turns WhatsApp into a fully automated ordering counter, booking desk, and enquiry line — backed by a clean owner dashboard.
 
-**Live:** https://zesto-rose.vercel.app  
-**Pages:** [Home](https://zesto-rose.vercel.app) · [The Idea](https://zesto-rose.vercel.app/idea) · [Dashboard Tour](https://zesto-rose.vercel.app/product)
+**Live product:** https://outbuiltit.com  
+**Demo deployment:** [Home](https://zesto-rose.vercel.app) · [The Idea](https://zesto-rose.vercel.app/idea) · [Dashboard Tour](https://zesto-rose.vercel.app/product)
 
 ---
 
